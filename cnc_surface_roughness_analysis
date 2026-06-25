@@ -1,0 +1,2227 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "1bb2614a",
+   "metadata": {
+    "papermill": {
+     "duration": 0.008539,
+     "end_time": "2026-06-25T21:16:48.034032",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:48.025493",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "# Analysis of Machining Parameters on Surface Roughness in CNC Turning Processes\n",
+    "\n",
+    "**Author:** Lucas Russo\n",
+    "\n",
+    "**Advisor:** Abou El-Makarim Aboueissa\n",
+    "\n",
+    "**Affiliation:** University of Southern Maine \n",
+    "\n",
+    "**Date:** 2026  "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "362c5c18",
+   "metadata": {
+    "papermill": {
+     "duration": 0.008051,
+     "end_time": "2026-06-25T21:16:48.049891",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:48.041840",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "## 1. Introduction and Data Source\n",
+    "\n",
+    "The dataset selected for this project is **“CNC turning: roughness, forces and tool wear”**, obtained from Kaggle. This dataset was developed from controlled machining experiments conducted at the Competence Center in Manufacturing (CCM) at the Aeronautics Institute of Technology (ITA). The purpose of the experiments was to study how machining parameters influence key performance measures such as surface roughness, cutting forces, and tool wear.\n",
+    "\n",
+    "Because the data were collected under controlled laboratory conditions where factors were deliberately set by the experimenters, this dataset represents an **experimental study** rather than an observational one. This makes it especially appropriate for analysis using ANOVA techniques, as causal relationships between factors and the response variable can be investigated.\n",
+    "\n",
+    "---\n",
+    "\n",
+    "## 2. Description of Variables\n",
+    "\n",
+    "### Response Variable\n",
+    "\n",
+    "- **Surface Roughness (Ra):** A continuous numerical variable measuring the average deviation of the machined surface (in micrometers). Lower values indicate smoother surfaces.\n",
+    "\n",
+    "---\n",
+    "\n",
+    "### Factors (Independent Variables)\n",
+    "\n",
+    "- **Depth of Cut (ap):** 0.25, 0.5, 0.8 mm  \n",
+    "- **Cutting Speed (vc):** 310, 350, 390 m/min  \n",
+    "- **Feed Rate (f):** 0.07, 0.10, 0.13 mm/rev  \n",
+    "\n",
+    "---\n",
+    "\n",
+    "### Additional Variables\n",
+    "\n",
+    "- **Replica:** Indicates repeated experimental runs for the same factor combination  \n",
+    "- **Position:** Measurement location on the machined surface  \n",
+    "- **Run:** Constructed variable representing each unique experimental run  \n",
+    "\n",
+    "---\n",
+    "\n",
+    "## 3. Data Structure and Number of Observations\n",
+    "\n",
+    "The experimental design is a full factorial design:\n",
+    "\n",
+    "$$\n",
+    "3 \\times 3 \\times 3 = 27 \\text{ treatment combinations}\n",
+    "$$\n",
+    "\n",
+    "Each combination has:\n",
+    "- 2 replicates  \n",
+    "- 6 measurements per replicate  \n",
+    "\n",
+    "Total number of observations:\n",
+    "\n",
+    "$$\n",
+    "27 \\times 2 \\times 6 = 324\n",
+    "$$\n",
+    "\n",
+    "The design is **balanced at the treatment level**, meaning each factor combination has the same number of observations.\n",
+    "\n",
+    "---\n",
+    "\n",
+    "## 4. Potential Issues in the Data\n",
+    "\n",
+    "- **Non-independence**: Multiple measurements taken within the same replicate (run) are likely correlated, since they are collected under identical machining conditions. Treating these observations as independent would violate model assumptions.\n",
+    "- **Hierarchical structure**: The data exhibit a nested structure, where measurements are nested within replicates, and replicates are nested within treatment combinations (ap × vc × f). This induces dependence that must be accounted for in the modeling process.\n",
+    "- **Heteroscedasticity**: Preliminary diagnostics indicate that the variability of surface roughness is not constant across factor levels, particularly with respect to feed rate. This violates the assumption of constant variance required by standard ANOVA models.\n",
+    "\n",
+    "Ignoring these features would lead to underestimated variability, biased standard errors, and invalid statistical inferences .\n",
+    "\n",
+    "---\n",
+    "\n",
+    "## 5. Sample of the Data\n",
+    "\n",
+    "| ap   | vc  | f    | Ra   | Replica | Position |\n",
+    "|------|-----|------|------|---------|----------|\n",
+    "| 0.25 | 310 | 0.07 | 0.85 | 1       | 1        |\n",
+    "| 0.25 | 310 | 0.07 | 0.88 | 1       | 2        |\n",
+    "| 0.25 | 310 | 0.07 | 0.90 | 1       | 3        |\n",
+    "| 0.25 | 310 | 0.07 | 0.87 | 1       | 4        |\n",
+    "| 0.25 | 310 | 0.07 | 0.89 | 1       | 5        |\n",
+    "| 0.25 | 310 | 0.07 | 0.86 | 1       | 6        |\n",
+    "\n",
+    "(This is a subset of one treatment combination; full dataset contains 324 observations.)\n",
+    "\n",
+    "---\n",
+    "\n",
+    "## 6. Proposed Analysis\n",
+    "\n",
+    "The analysis will use a **mixed-effects factorial ANOVA model**.\n",
+    "\n",
+    "- Fixed effects: ap, vc, f  \n",
+    "- Random effect: Run (to account for repeated measurements)\n",
+    "\n",
+    "### Model:\n",
+    "\n",
+    "$$\n",
+    "y_{ijkl} = \\mu + A_i + B_j + C_k + (AB)_{ij} + (AC)_{ik} + (BC)_{jk} + (ABC)_{ijk} + R_{l(ijk)} + \\epsilon_{ijkl}\n",
+    "$$\n",
+    "\n",
+    "This model allows for:\n",
+    "- Testing main effects  \n",
+    "- Evaluating interaction effects  \n",
+    "- Accounting for within-run variability  \n",
+    "\n",
+    "---\n",
+    "\n",
+    "## 7. Research Questions and Hypotheses\n",
+    "\n",
+    "1. Does depth of cut affect surface roughness?  \n",
+    "2. Does cutting speed affect surface roughness?  \n",
+    "3. Does feed rate affect surface roughness?  \n",
+    "4. Are there interaction effects between factors?  \n",
+    "5. Which factor has the strongest influence?  \n",
+    "\n",
+    "Each question corresponds to a hypothesis test where:\n",
+    "\n",
+    "- $H_0$: No effect  \n",
+    "- $H_a$: Significant effect  \n",
+    "\n",
+    "---\n",
+    "\n",
+    "## 8. Summary\n",
+    "\n",
+    "This dataset provides a well-structured experimental framework for analyzing machining processes. Its factorial design combined with repeated measurements makes it ideal for mixed-effects ANOVA. The results will provide insight into how machining parameters influence surface roughness and demonstrate proper statistical modeling of hierarchical data."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "cf27cb70",
+   "metadata": {
+    "papermill": {
+     "duration": 0.007614,
+     "end_time": "2026-06-25T21:16:48.065372",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:48.057758",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "## 9. R Code: Data Preparation, EDA, and Modeling"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "acc3be4d",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-25T21:16:48.086659Z",
+     "iopub.status.busy": "2026-06-25T21:16:48.084242Z",
+     "iopub.status.idle": "2026-06-25T21:16:48.422687Z",
+     "shell.execute_reply": "2026-06-25T21:16:48.414163Z"
+    },
+    "papermill": {
+     "duration": 0.353298,
+     "end_time": "2026-06-25T21:16:48.426182",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:48.072884",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "\n",
+      "Attaching package: ‘dplyr’\n",
+      "\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "The following objects are masked from ‘package:stats’:\n",
+      "\n",
+      "    filter, lag\n",
+      "\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "The following objects are masked from ‘package:base’:\n",
+      "\n",
+      "    intersect, setdiff, setequal, union\n",
+      "\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "library(dplyr)\n",
+    "\n",
+    "# Load data\n",
+    "data <- read.csv(\"/kaggle/input/datasets/adorigueto/cnc-turning-roughness-forces-and-tool-wear/Exp1.csv\")\n",
+    "\n",
+    "# Convert to factors\n",
+    "data <- data %>%\n",
+    "  mutate(across(c(ap, vc, f, Replica, Position), as.factor))\n",
+    "\n",
+    "# Keep relevant variables\n",
+    "data <- data %>%\n",
+    "  select(ap, vc, f, Ra, Replica, Position)\n",
+    "\n",
+    "# Create Run ID \n",
+    "data$Run <- interaction(data$ap, data$vc, data$f, data$Replica)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "6563862a",
+   "metadata": {
+    "papermill": {
+     "duration": 0.007764,
+     "end_time": "2026-06-25T21:16:48.441918",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:48.434154",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "We load the dataset, select relevant variables, convert key machining parameters into factors, and create a unique Run identifier to represent each experimental combination for use in mixed-effects modeling."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "f70b6ad7",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-25T21:16:48.494595Z",
+     "iopub.status.busy": "2026-06-25T21:16:48.459765Z",
+     "iopub.status.idle": "2026-06-25T21:16:48.515810Z",
+     "shell.execute_reply": "2026-06-25T21:16:48.513975Z"
+    },
+    "papermill": {
+     "duration": 0.068649,
+     "end_time": "2026-06-25T21:16:48.518432",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:48.449783",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<style>\n",
+       ".dl-inline {width: auto; margin:0; padding: 0}\n",
+       ".dl-inline>dt, .dl-inline>dd {float: none; width: auto; display: inline-block}\n",
+       ".dl-inline>dt::after {content: \":\\0020\"; padding-right: .5ex}\n",
+       ".dl-inline>dt:not(:first-of-type) {padding-left: .5ex}\n",
+       "</style><dl class=dl-inline><dt>ap</dt><dd>0</dd><dt>vc</dt><dd>0</dd><dt>f</dt><dd>0</dd><dt>Ra</dt><dd>0</dd><dt>Replica</dt><dd>0</dd><dt>Position</dt><dd>0</dd><dt>Run</dt><dd>0</dd></dl>\n"
+      ],
+      "text/latex": [
+       "\\begin{description*}\n",
+       "\\item[ap] 0\n",
+       "\\item[vc] 0\n",
+       "\\item[f] 0\n",
+       "\\item[Ra] 0\n",
+       "\\item[Replica] 0\n",
+       "\\item[Position] 0\n",
+       "\\item[Run] 0\n",
+       "\\end{description*}\n"
+      ],
+      "text/markdown": [
+       "ap\n",
+       ":   0vc\n",
+       ":   0f\n",
+       ":   0Ra\n",
+       ":   0Replica\n",
+       ":   0Position\n",
+       ":   0Run\n",
+       ":   0\n",
+       "\n"
+      ],
+      "text/plain": [
+       "      ap       vc        f       Ra  Replica Position      Run \n",
+       "       0        0        0        0        0        0        0 "
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# Check missing values\n",
+    "colSums(is.na(data))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "ef4cd056",
+   "metadata": {
+    "papermill": {
+     "duration": 0.0081,
+     "end_time": "2026-06-25T21:16:48.534623",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:48.526523",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "We first check for missing values in the dataset by counting the number of NA entries in each column. It helps identify data quality issues before model fitting and ensures that no variables contain missing observations that could affect the analysis. In this dataset, there are no missing values."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "e0b1faad",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-25T21:16:48.559671Z",
+     "iopub.status.busy": "2026-06-25T21:16:48.553215Z",
+     "iopub.status.idle": "2026-06-25T21:16:50.382113Z",
+     "shell.execute_reply": "2026-06-25T21:16:50.379079Z"
+    },
+    "papermill": {
+     "duration": 1.842986,
+     "end_time": "2026-06-25T21:16:50.385818",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:48.542832",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "data": {
+      "image/png": "iVBORw0KGgoAAAANSUhEUgAAA0gAAANICAIAAAByhViMAAAABmJLR0QA/wD/AP+gvaeTAAAg\nAElEQVR4nOzdZ3xUZd7/8eucKelNCCEEhCQ0QWm6FqTY0QVRrLcKFgQULAvq6or+xbaK3iyw\nuLKrq9FVcRVlde0oTZJVb1bAgqig9BYwIYVMkinn/B/MGrOpM5mZc81c83k/yIucGa7zzcz8\nJt/MmaKZpikAAAAQ+3TZAQAAABAeFDsAAABFUOwAAAAUQbEDAABQBMUOAABAERQ7AAAARVDs\nAAAAFEGxAwAAUATFDgAAQBEUOwAAAEVQ7AAAABRBsQMAAFAExQ4AAEARFDsAAABFUOwAAAAU\nQbEDAABQBMUOAABAERS7aDEwxak1o+v2tMzsoSN//fAzHxqyEwJRgmFBlHAdWH3dmcd3TnXm\nDJxt8a6ZArRGM01TdgYIIcTAFOdmlycnvzDNpjVsNLzusn17K90+IcSAKxZ/8/J0eQGBaMGw\nIEr8tk/WvB8qug4745wTJ/7tz9dZuWumAK2h2EUL/5QuOVhzZXZy4+2mr+r1R6+57P+9KYT4\n/Q8VswszJAUEogXDgqhgup22RJHUv6L6m2Rda//8YcUUoDUcio12mi390nvfuKlbqhDilcVb\nZMcBohfDAiuZRq3HNB3JA61vdW1gCkCxE0IIw13ni+4HLi8dmSOEqPiqQnYQINoxLABTEM/U\nLHamr/LlP9xx5okDOmWk2J1J2T36nnfVrcu/q2x8nlvy0hxJhZ7qb2ZdcEpGcorDZs/K6THm\niptXbq1qbdn3LszXNO2ER79ssn3vyss0TTuq3wP+b8s3vXvrFef2zu2U4HBmdOo+ctx1r/zf\ngRB/IqPeEEKkFqYG9TMCgQjwhi1M70fP3H/uyccclZaYktllyOkXzX/98xDXZFgQo1ac11O3\nZwohXD+9rmlaWt4tzc/DFEAOUzmGt2rqiV2EELo9c/AJp4we/qteWQlCCJsz961Droaz3dwt\n1ebMvbpvphDCnpw9eGj/VLsuhLA5uzyx7mCLK5d/9zshRErX65tsXzw0Wwhx8Xu7TNM8tH5+\npl0XQhxVMHDE6BEDemUIIXRb6qLN5W3HHpDsEEIsOVjT0one/+mSLIS4pnh/UD8jEIhAbtim\n6X300v7+G/PQk0f+6rg+dk0TQoy64x8dXpNhQezaWjT3d3fOFEI4kvv97ne/m/PIP5ufhymA\nFAoWu72rLxVCpB19yXfldf4thrf6qev6CiGOu2Ndw9lu7pYqhNA0/dqF79Ubpmmavvqf/nzz\ncCFEQsaIco/RwtJG/bBUpxDi/fLahm3e2h/TbLotIa/U7TNN846e6UKISX/95OfTfW/fc5IQ\nosuwZ9qO3fKU+tz7tn7+yOQThBBdTp5Z/3OoAH9GICAB3LC/e3q8ECKj96X/Lv3Pr4HSDcsK\nEu2aZivad6RjazIsiGmGt0IIkdz5ktbPwRRAAgWL3Q8vzrzwwgvvXrG38caKbXcIIY4+96OG\nLf5i1+Pcov/+376bCzKEEJev3NPi4quu7iuEOOWJbxq27HxnvBCi1/j//LnWJ8khhNha62k4\ng/vIxvvvv/+ReW+2Hds/pa0ZfuO8Qx5fsD8jEKB2b9hnZiZqmvby3v/qcF88crwQ4sT5X3ds\nTYYFMa39YscUQAYFi11zdeU7n5l5bIvF7tbvmj7cveOts4UQPce2fFuv3DFXCJHW47aGLfMG\ndhJCPPJjhf/bOwszhRC9zrvp3U++qW/pUb/W+Kc0J7+wd2OF+Z2S7EKIhMwBT5QcCPZnBALU\n9g27tuxtIURKzqQm/8vnPrRjx469h+o6sKbJsCDGBVLsmAJYT81i56nZ/vzCB6+7YsKIXw3u\n3uWXd/FpXuxWHG76O6lq1yNCiKzeT7Sytu+0zERNs5VU1pum6an5JknXkjqNa5jH6h1vndkn\n0787R2qXE08//7b756/9tqzdzK09YcLw1Sx76NdCiIT0U32NtgfyMwIBa+uGXfHjLCFE54Gv\nhXFNk2FBjAuk2DEFsJ6Cxe6n9X8tSHUIITr3Of6SSVNnPzC36O9vrfu/21osdqsqmha76j3z\nhBCZBX9obf1PbxkohBj9/BbTNH98bYwQ4ldzv/yvcxj16z54+d5brxs1rF+STRNCaJp9/N0B\nPa7e2jNhT0hzCiFe+/lZrgH+jEDg2rhhH946XQiRPeiNMK75HwwLYlZgxY4pgNUULHaX56QI\nIWa9/O/GGyu339NisZv1fdNDsbs/HCuEyBv9bmvrH9n3lBAis3COaZoP9snSdEdxZX1rZ/a6\nSpe/8Ptsh03TtCUH23rxUZtTaj7QM0MIMWdnZVA/IxC4Nm7YNaV/E0Kkdru5yX/xuL596aWX\nXnvrxw6s2RzDgtgSYLFjCmAx1Yqd4a3QNM2ecHST7buXT2ix2PUc90KTBe7snyWEOP+tHW3s\nZULnJE13rtv/iUPXOg18rGF7TemLvXv3Pu6kWU3O//cBnYUQ1zYrkY21PaWLCrOEEJO/Lw/q\nZwSC0toN2zTcx6Y4NM3+zn+/M8L3z44SQvS+8uMOrMmwINYFWOxMpgDWUq3YmaavIMmuadqz\nm34ZiXWv/aFfskMIkTf6/YaNP7/diW3a4hVe0zRN0/BUPHv76UIIZ+rQA25fs5V/seG+oUKI\nPv9TKIS4ctUvrzPyuUs7O2yaZvt/b/7yOsFDm97um+TQNHvzw76NtT2lf+mTJYQY+9n+oH5G\nICit3bBN01z/4KlCiKMGTvrqp//cjMs3vdMv2aFp2vxtlR1Yk2FBrAu82DEFsJJ6xc785L7R\nQgjdljLinPMvu/DcwX1zdFvqFXf9Tghhc+ZeO/0ml88wG14Ve+1wIYQzI++EE4/LSrAJIWyO\nTn9o88VEpmm6Dr3mf9qpPTG/7L/f8e7TB87xn9Sl9+AzzjrzV4N665omhDjrd8vbXrPtKX1/\nVJ4Qov+0NUH9jEBQ2rhhG76aO87qIYTQbEl9h5x66vEDE3VNCHHKLUs7vCbDgpgWeLFjCmAl\nBYudafre+eNdpww8OslpS83qMnzsxDe/KjNN80/XjM5ItKd06lHl/aXYbTjiLn7qzlP690hx\n2tM7dzvz0hvf/+ZwIPu4vmuKEKLwsg+an/SvJY+PHzksOyPFptvTjuo2/Jz/efLNje0u2PaU\nbnv9bCGEbs94/kBN4D8jEKw2btiGz/WPP9552pCC9CRHQkrGscPPnfvC2hDXZFgQuwIvdiZT\nAAtppmmKuHRLXtqf9h3ZcMQ9NKWtt3kEAACIFbrsAAAAAAgPih0AAIAiKHYAAACKsMsOIM2V\n854c4vIcnWCTHQQAACA84vfFEwAAAIrhUCwAAIAiKHYAAACKoNgBAAAogmIHAACgCIodAACA\nIih2AAAAiojf97ELC6/Xa5qmpml2e0xekuSH9fzXmq7rNltMvosk+WE9j8cjhIjda438VuIR\nu5C4XK7KykqXyyU7SAfFev7a2tqYzh+fampqKisra2trZQfpIPLDekeOHKmsrKyvr5cdpIPI\nbyWKHQAAgCIodgAAAIqg2AEAACiCYgcAAKAIih0AAIAiKHYAAACKoNgBAAAogmIHAACgCIod\nAACAIih2AAAAiqDYAQAAKIJiBwAAoAiKHQAAgCIodgAAAIqg2AEAACiCYgcAAKAIih0AAIAi\nKHYAAACKoNgBAAAogmIHAACgCIodAACAIih2AAAAiqDYAQAAKIJiBwAAoAiKHQAAgCIodgAA\nAIqg2AEAACjCLjsAAMSMzZs3r1q1qrS0tGfPnuedd15eXp7sRAAia+PGjWvXri0rK8vPzx83\nblx2drbsRO2g2AFA+3w+39y5c998803TNDVNM03z2WefnT59+tVXXy07GoCIcLvdc+bM+eij\nj4QQDVN/++23T5gwQXa0tnAoFgDaV1RU9MYbb5imKYTwf/V4PIsWLVqzZo3kZAAiY+HChf5W\nJ36e+vr6+kceeeTLL7+UmqsdFDsAaIdhGK+++qqmaU2267r+97//XUokABFVV1f35ptvNtno\nf8D+1VdflRIpQByKDUlxcfHOnTt79uw5duxY2VkARMrhw4crKiqabzcMY+vWrdbnARBpe/bs\ncbvdzbcbhrFlyxbr8wSOR+xCsmLFiqKiohUrVsgOAiCC7PZW/wZu4yQAsau10dY0LcqnnmIH\nAO3IyMjo3r27rje9w9Q0bciQIVIiAYioHj16pKenN38ChhBi8ODB1ucJHMUOANp39dVXG4bR\nZKOmabwqFlCSzWa74oor/K+ZaEzX9auuukpKpABR7ACgfd99913zv90Nw9i8ebOUPAAibcuW\nLc2n3ufzff/991LyBIhiBwDt8Hq97733Xot/u7/99ttSIgGIqKqqqjVr1jSfek3T3nnnHSmR\nAkSxA4B2lJeX19XVNd9uGMbu3butzwMg0g4cONC81QkhTNPctWuX9XkCR7EDgHakpKS0+Bxq\nIURqaqrFYQBYICUlpcXtuq5H+dRT7ACgHSkpKQMHDmzxVbGnnHKKlEgAIiovLy8vL6/51BuG\nEeVTT7EDgPb95je/0XW98b28pmnp6enXX3+9xFQAIuf2228XQthstoYtmqbl5ORMnDhRXqj2\nUewAoH1Dhw7961//2q9fv4YtI0aM+Nvf/ta1a1eJqQBEzqhRo/70pz/16NHD/62maeecc85z\nzz2Xnp4uN1jbKHYAEJCMjIzs7Gz/m84nJCRkZ2dH+VNtAIQoKyurS5cu/gftkpKSsrOzW3vu\nXfSg2AFA+7Zs2XLllVcWFxd7vV4hRH19/RtvvDFx4sQWP0MWgAI2bNhw9dVXf/755z6fTwhR\nW1v70ksvXXfddbW1tbKjtYViBwDtW7Bggdvtbvz2B6ZplpaWFhUVSUwFIHIee+wxn8/X8JEz\n/vHftm3bK6+8IjVXOyh2ANCO2trazz//vPlHipmm+fHHH0uJBCCiSktLf/zxx+ZTr+t6cXGx\nlEgBotgBQDuqq6tbfKtSIQSHYgEltTbahmGUl5dbHCYoFDsAaEdmZqbD4Wi+Xdf13Nxc6/MA\niLQuXbq0+LbkmqZ169bN+jyBo9gBQDucTucZZ5zR/F7eMIwxY8ZIiQQgorKysk444YTmb1Bs\nmmaUTz3FDgDaN3PmTP+f6f565/86bNiwq666SnIyAJExe/bsrKws8fO8+0veaaeddv7550tO\n1ia77AAAEAOys7NfffXVF154Yc2aNaWlpT179hw3btyFF17Y/A96AGro0aPHsmXLioqKPvnk\nk0OHDhUWFl500UVjxoxp7ZOjowTFDgACkpiYOG3atMsvv9zj8SQmJvLuxIDyUlNTb7311kmT\nJvl8vuTk5OTkZNmJ2sffmgAAAIqg2AEAACiCYgcAAKAIih0AAIAiKHYAAACKUO1VseXl5c0/\n2S1y/PsyDOOnn36ybKdh53a7yR84XdePOuooy3ZnASnXfl1dXV1dnfX7DRfyB8Vut2dmZlq2\nu0iT9aFSLpfL5XJZv99wIX9QHA5HRkZGB/6jasUuPT3dyt01vFVpjN5n1dTUeDweh8ORkpIi\nO0tHuFwut9sdu/mjhMW33iNHjni9XqfTGRNvHNBcZWXloUOHcnNzY/RWJ+Xyj/L3/QqWrusW\nT01VVZVhGImJiYmJiVbuN1xiPX9ZWdnhw4e7d+9uZf4OT41qxc5ut/Qnaih2Fu83XMgPIWlq\ndF2PuWtt165d99133+bNmw3DsNlso0aNuvvuu2Pu4dvYvfyjClMTlNjN//3338+ZM+fHH380\nTdNut48ZM+a3v/1tlL+HJc+xA4D2ffPNN5dccsmmTZv8T8Dw+XyrV6++8MILpRySA2CBf/3r\nXxMnTvzhhx9M0xRCeL3ed999d8KECVF+QJliBwDtu+uuu5o/f9flcs2ZM0dKHgCRdu+99/or\nXWOHDx9+/PHHpeQJEMUOANpRU1NTWlra4knr16+3OAwAC2zfvr26urrFk4qLiy0OExSKHQC0\nY9euXc3/cPdzu90WhwFggR9++KG1k2pqaqxMEiyKHQC0Izs7u7WTYu7J4AACkZub29pJTqfT\nyiTBotgBQDs6d+7c2uvgCgoKLA4DwAIDBgxwOBwtnjRo0CCLwwSFYgcA7bvjjjuab9R1nRdP\nAErSdf2GG25ovt1ut997773W5wkcxQ4A2jdu3LhHH3208ZsS5+TkPPPMM/369ZOYCkDkXHvt\ntXfffXdCQkLDlp49e7700ktdu3aVmKpdPDsEAAJy9tlnjx49+osvvjhw4EBBQcGAAQN0nb+N\nAZVdfPHFY8eO3bhx46FDh/r169e3b9/o/xgVih0ABMrpdPbr16+goCAxMZFWB8SDxMTE/v37\n9+nTJzk5OfpbneBQLAAAgDIodgAAAIqg2AEAACiCYgcAAKAIih0AAIAiKHYAAACKoNgBAAAo\ngmIHAACgCIodAACAIih2AAAAiqDYAQAAKIJiBwAAoAiKHQAAgCIodgAAAIqg2AEAACiCYgcA\nAKAIih0AAIAiKHYAAACKoNgBAAAogmIHAACgCIodAACAIih2AAAAiqDYAQAAKIJiBwAAoAiK\nHQAAgCIodgAAAIqg2AEAACiCYgcAAKAIih0AAIAiKHYAAACKoNgBAAAowi47AADEBp/Pt2zZ\nsjVr1uzfv79Xr17jxo0788wzZYcCgP9CsQOA9lVWVt54441bt27Vdd0wjL179xYXF5922mmP\nPfaYzWaTnQ4A/oNDsQDQvkWLFm3dulUIYRhGw9c1a9YsXbpUcjIAaIRiBwDt8Hq9y5cvb75d\n1/V3333X+jwA0BoOxQJAO8rLy+vq6ppvNwxj9+7d1ucBYKWSkpLdu3cXFBSce+65srO0j0fs\nAKAdqampmqa1eFJaWprFYQBYbOXKlUVFRR9++KHsIAGh2AFAO5KTk4899lhdb+EOc/jw4dbn\nAYDWUOwAoH2zZs2y2WyNu52u65mZmVOmTJGYCgCaoNgBQPsGDRpUVFQ0cOBA/7e6rp922mkv\nvPBCly5d5AYDgMZ48QQABOSYY4557rnn9uzZs3///vz8/M6dO8tOBABNUewAIAhpaWmJiYmJ\niYmygwBACzgUCwAAoAiKHQAAgCIodgAAAIqg2AEAACiCYgcAAKAIih0AAIAiKHYAAACKoNgB\nAAAogmIHAACgCIodAACAIih2AAAAiqDYAQAAKIJiBwAAoAiKHQAAgCIodgAAAIqg2AEAACiC\nYgcAAKAIih0AAIAiKHYAAACKoNgBAAAogmIHAACgCIodAACAIih2AAAAirDLDgAAsEhlZeUn\nn3yyf//+Xr16DR8+PDExUXYiAGFGsQOAuPD6668/8cQTNTU1/m+zs7Nnz549cuRIuakAhBeH\nYgFAfe+9997cuXNdLlfDlrKysjvuuGPTpk0SUwEIO4odAKjv6aef1nXdNM2GLYZhmKb53HPP\nSUwFIOw4FAsAiquqqtqzZ0/z7YZhfPnll9bnARA5PGIHAIrzer2tneTz+axMAiDSKHYAoLis\nrKy0tLQWT+rVq5e1WQBEFsUOABSnaVpCQkKLJ7W2HUCMotgBgOJqamp++umnFk/asWOHtVkA\nRBbFDgAUV1dX19pJtbW1ViYBEGkUOwBQXFZWVmpqqqZpTbZrmpafny8lEoAIodgBgOJ0Xb/g\nggsav4mdn2maEyZMkBIJQIRQ7ABAfdOnTz/llFOEELquaz+79NJLx48fLzsagHDiDYoBQH2J\niYlPPPHE6tWrV69eXVpa2qNHj/Hjxw8aNEh2LgBhRrEDgHhx+umnDxs2zOPxJCYmpqamyo4D\nIPw4FAsAAKAIih0AAIAiKHYAAACKoNgBAAAogmIHAACgCF4VCwBxoaampqioaM2aNQcPHuzR\no8fYsWMvv/xyu53fAoBSomKkn59+TeKDf/mf7KQWTy399J6pj37deMvk55Ze2CnRkmhAlGJq\nEJSDBw9ed911paWl/m+3bt26YMGCjz766C9/+UtiYrzcMJgaxAPpxc7cWvzsG/sqLm32WTcN\nKr6oSOp0/m+mDmzY0jPNYUk2IDoxNQjawoULDx482PCt/+PFNm3a9OKLL06dOlVeLsswNYgX\nMovdwU8X3vVESdkRdztn21yVOWD48OED2z4bEA+YGnSAx+NZvXp188+K1TRt+fLlyhc7pgZx\nReaLJzIHXnrPg3PnPXZX22f7oqo+a2imr7bqwMGKVv/UAuIDU4MOqKio8Hg8zbebptn4YTxV\nMTWIKzIfsXOm5/VOFz53O89g2HjEY5YsuuyJ7zymaU/JHnPlb244v9XPNzx8+LBhGOFO2ir/\nvgzDKCsrs2ynYeT/C97tdsdofj+L8+u6npWVZdnumojE1Ei59uvq6urr663fb7jEVn6v16vr\nevP7Rk3TMjMzLbgB2O32jIyMSO+lNWGfGtM0y8vLI5C0Vf776tra2traWiv3Gy5q5Pf5fFbe\nWzocjvT09A78R+nPsWuHz733iM3Rq/Pwx5Y8mGlW/997Rf/713sT+rxwbf/MFs9vmmbzww0W\nkLLTMCJ/dO6rYzowNRYnlLvfcImh/A6HY9iwYRs2bGjS7UzTPOWUUyz4QaL/sgpqavhF0zGx\nnl/EyO+aaC92Nmfe0qVLf/4uYeTld275YP2qZzZdO29Ei+dPSUmx8nLXNM3/NUY/Tru2ttbn\n89lstqSkll8mFuXq6uq8Xq/dbrfyZX3+Kz2aBTs1Ft96/bc6h8ORkJBg5X7DJUbzz5w584Yb\nbnC5XI3vIbt16zZlyhQLbgCKTY319/kul8swDKfT6XQ6rdxvuMR6fj9d16283nW9g0+Wi/Zi\n19zQnKQV5YdaO9Xiu9qGYhej7xfgdrv9xS5G83s8Hv8xphjNb5m2p8biS6++vj6mb3Uxmr9/\n//5Lly5dtGjR2rVra2tr09PTx40bN3Xq1LS0NNnRolQbU2P9fb7/CKbFf8SGUaznj63f9dH+\nyRMVW568fspNB9wNhw+Mj/e5Mgf0lZkJiG5MDVqUk5Pz+9///p133nn99dffeuut2267jVbX\ngKmBMqK02G17/aXnXnhbCJFecHknV+ld9z/1703fb/3mi1cW3rm2Jm3aFIYNaIqpQYBi9Kkj\nYdcwMoKpgUKitNjtXfX+O++VCCF0e+eHnnzglLTdix6+d/YjizZWdLtzwR+HpvKmkUBTTA0Q\nlIaREUwNFKIp8CoViWbNmlVcXDxy5MgFCxbIztIRVVVVbrfb6XR27DXV0lVXV9fX18du/vhU\nWVnp8XgSExNj9HEj8sN6hw8f9vl8ycnJycnJsrN0RKznnzlzZklJyahRo+bPny87S/ui9BE7\nAAAABItiBwAAoAiKHQAAgCIodgAAAIqg2AEAACgi9j55AvBbv379+++/v3///tzc3PPOO+/4\n44+XnQgAAMkodog9hmE8+OCD77zzjqZpmqaZpvnmm2+OHTv2vvvus9lsstMBACANh2IRe5Ys\nWfLOO+8IIUzTNAzD/16M77777pIlS2RHAwBAJoodYs+yZcv8H8ncmKZpy5Ytk5IHAIAowaFY\nxBifz7dv377mn5himua+ffs8Ho/DwacAIYJKSkp27tyZn59/3nnnyc4CAE3xiB1ijK7rrT2R\nzmaz2e38rYLI+uijj4qKij788EPZQQCgBRQ7xBhN04YNG6brTW+6uq4PHTq0+SFaAADiB8UO\nsWf69Om6rjfucJqm6bo+Y8YMiakAAJCOYofY07lz56SkpMZPszNNMykpKTs7W2IqAACko9gh\n9ixevPjIkSNNNh45cmTx4sVS8gAAECUodog9H3/8cYuvil2zZo2MOAAARAuKHWKMz+erqalp\n8SSXy+V2uy3OAwBA9KDYIcbYbLasrKwWT8rIyHA6nRbnAQAgelDsEHvGjBkT1HYAAOIExQ6x\nZ9q0afn5+UII/zue+L/m5+ffeOONkpMBACAVxQ6xJz09fcmSJTNmzMjJyXE6nTk5OTNmzFiy\nZEl6errsaAAAyESxQ0xyOp2TJ0/u06eP2+3u06fP5MmTeXYdAAAUOwAAAEVQ7AAAABRBsQMA\nAFAExQ4AAEARFDsAAABFUOwAAAAUQbEDAABQBMUOAABAERQ7AAAARVDsAAAAFEGxAwAAUATF\nDgAAQBEUOwAAAEVQ7AAAABRBsQMAAFAExQ4AAEARFDsAAABFUOwAAAAUQbEDAABQBMUOAABA\nERQ7AAAARVDsAAAAFEGxAwAAUATFDgAAQBEUOwAAAEVQ7AAAABRBsQMAAFAExQ4AAEARFDsA\nAABFUOwAAAAUQbEDAABQBMUOAABAERQ7AAAARVDsAAAAFEGxAwAAUATFDgAAQBEUOwAAAEVQ\n7AAAABRBsQMAAFAExQ4AAEARFDsAAABFUOwAAAAUQbEDAABQBMUOAABAERQ7AAAARVDsAAAA\nFEGxAwAAUATFDgAAQBEUOwAAAEVQ7AAAABRBsQMAAFAExQ4AAEARFDsAAABFUOwAAAAUQbED\nAABQBMUOAABAERQ7AAAARVDsAAAAFEGxAwAAUATFDgAAQBEUOwAAAEVQ7AAAABRBsQMAAFAE\nxQ4AAEARFDsAAABFUOwAAAAUQbEDAABQBMUOAABAERQ7AAAARVDsAAAAFEGxAwAAUATFDgAA\nQBEUOwAAAEVQ7AAAABRhlx0gzKqrqw3DsGx3/n0ZhlFZWWnZTsPI6/UKITweT4zml3L567qe\nlpZm2e4sYPG17/P5hBButztGb3WmaYrYn3qLL3+bzZaammrZ7iLNNM2qqior9+i/r6uvr/d4\nPFbuN1xiPb+Uqbfb7SkpKR35j2GPIpfD4fBfAdbQNM3/1el0WrbTMDIMw+fz6boeo/mlXP7+\nnarE4mu/rq5OCMGtThYpU8/UhMjn85mmabPZHA6HlfsNl1jP72fx1Ot6B4+pqlbsEhMTrdxd\nw118UlKSlfsNF4/H4/P5bDZbjOaP9cs/Slh86bndbp/PZ7fbY/pai91bnRqXv1zWX/v+P4di\n91qL9fyx9buG59gBAAAogmIHAACgCIodAACAIih2AAAAiqDYAQAAKIJiB/o0IZ0AACAASURB\nVAAAoAiKHQAAgCIodgAAAIqg2AEAACiCYgcAAKAIih0AAIAiKHYAAACKoNgBAAAowi47AID4\nUlJSsnPnzvz8/PPOO092FgBQDY/YAbDURx99VFRU9OGHH8oOAgAKotgBAAAogkOx8auqqqq4\nuHjv3r15eXkjR45MT0+XnQgAAISEYhen3nrrrfnz5x85csT/bWpq6m233TZ+/Hi5qQAAQCg4\nFBuP1q5d+9BDD7lcroYtLpfroYceWrt2rcRUAAAgRBS7ePTss88KIQzDaNji/7d/OwCFlZSU\nLF26tLi4WHYQABFBsYs7hmF8++23pmk22W6a5rffftu47QFQD69KBtRGsYtHzVtdw/bWTgIA\nANGPYhd3dF3v3bu3rje96v3bbTablFQAACB0FLt4dNVVVzU55KppmmEYEydOlBUJAACEjmIX\nj8aNGzdjxgyHw9GwxW63z5gxY+zYsRJTAQCAEPE+dnFq8uTJRx111LJlyw4dOpSdnX3JJZdc\ncMEFskMBAICQUOzikcfjmT179urVq3VdN02zvLz8oYceKikpefTRR+12bhIAAMQqDsXGoxdf\nfHH16tVCCMMwTNP0P99u9erVL7zwguxoAACg43h4Jh698cYbrW2fPHmyxWEAAIiERYsWlZWV\nhb7Oli1bhBDff//9nDlzQl9t9OjRZ5xxRujrtIZiF3e8Xu+BAwdaPOnAgQMej6fxiyoAAIhR\na9as2bVrV7hWKy0tfffdd0NfJycnh2KHcGr7nep4jh0AQCW5yYl5yUmyUwghxKbDlXW+iH+8\nE7/FAQCAssbkdbmhf77sFEIIcdmqdbtraiO9F148EXd8Pl8bp3q9XsuSAACA8KLYxR273d61\na9cWT8rJyeEJdgAAxC6KXTyaMGFCi9svuugii5MAAIAwotjFo169erW4PT8/Kp6FAAAAOoZi\nF4/+9re/6XrTq17TtOeff15GHAAAEB4Uu7hjGMa3337r/7SJxkzTbHE7AACIFRS7eGSaZmvb\nWzsJAABEP4pd3NF1vXfv3s0Pxfq3t/32xQAAIJpR7OLRxIkTDcPQNK1hi6ZphmFMmjRJYioA\nABAiil08Gjt27E033dT408PsdvtNN93061//WmIqAAAQIopdnDrjjDOOO+44/4N2mqYNGjQo\nop9JDAAALECxi0c7duyYNGnSxo0b/S+VME1z48aNkyZN2rlzp+xoAACg4yh28Wjx4sW1tbWN\n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\nG4HOLWIAAAAASUVORK5CYII="
+     },
+     "metadata": {
+      "image/png": {
+       "height": 420,
+       "width": 420
+      }
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "library(ggplot2)\n",
+    "library(patchwork)\n",
+    "\n",
+    "theme_set(theme_minimal())\n",
+    "\n",
+    "p1 <- ggplot(data, aes(x = ap, y = Ra)) +\n",
+    "  geom_boxplot(fill = \"skyblue\") +\n",
+    "  labs(title = \"ap vs Ra\", x = \"ap\", y = \"Ra\")\n",
+    "\n",
+    "p2 <- ggplot(data, aes(x = vc, y = Ra)) +\n",
+    "  geom_boxplot(fill = \"lightgreen\") +\n",
+    "  labs(title = \"vc vs Ra\", x = \"vc\", y = \"Ra\")\n",
+    "\n",
+    "p3 <- ggplot(data, aes(x = f, y = Ra)) +\n",
+    "  geom_boxplot(fill = \"salmon\") +\n",
+    "  labs(title = \"f vs Ra\", x = \"f\", y = \"Ra\")\n",
+    "\n",
+    "(p1 | p2 | p3) +\n",
+    "  plot_layout(widths = c(1, 1, 1))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "76116e3e",
+   "metadata": {
+    "papermill": {
+     "duration": 0.0082,
+     "end_time": "2026-06-25T21:16:50.402827",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:50.394627",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "Above are boxplots of surface roughness (Ra) against each machining parameter (ap, vc, and f). A minimal theme is applied for clean visualization, and the combined figure allows easy comparison of how each factor influences Ra."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "8f099754",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-25T21:16:50.423365Z",
+     "iopub.status.busy": "2026-06-25T21:16:50.421668Z",
+     "iopub.status.idle": "2026-06-25T21:16:52.498866Z",
+     "shell.execute_reply": "2026-06-25T21:16:52.495482Z"
+    },
+    "papermill": {
+     "duration": 2.092634,
+     "end_time": "2026-06-25T21:16:52.503747",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:50.411113",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Loading required package: Matrix\n",
+      "\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"dataframe\">\n",
+       "<caption>A anova: 7 × 4</caption>\n",
+       "<thead>\n",
+       "\t<tr><th></th><th scope=col>npar</th><th scope=col>Sum Sq</th><th scope=col>Mean Sq</th><th scope=col>F value</th></tr>\n",
+       "\t<tr><th></th><th scope=col>&lt;int&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th></tr>\n",
+       "</thead>\n",
+       "<tbody>\n",
+       "\t<tr><th scope=row>ap</th><td>2</td><td>0.060188834</td><td>0.030094417</td><td> 6.6695746</td></tr>\n",
+       "\t<tr><th scope=row>vc</th><td>2</td><td>0.016717041</td><td>0.008358521</td><td> 1.8524292</td></tr>\n",
+       "\t<tr><th scope=row>f</th><td>2</td><td>0.426138058</td><td>0.213069029</td><td>47.2207114</td></tr>\n",
+       "\t<tr><th scope=row>ap:vc</th><td>4</td><td>0.037956573</td><td>0.009489143</td><td> 2.1029996</td></tr>\n",
+       "\t<tr><th scope=row>ap:f</th><td>4</td><td>0.022980380</td><td>0.005745095</td><td> 1.2732375</td></tr>\n",
+       "\t<tr><th scope=row>vc:f</th><td>4</td><td>0.006694608</td><td>0.001673652</td><td> 0.3709175</td></tr>\n",
+       "\t<tr><th scope=row>ap:vc:f</th><td>8</td><td>0.023094621</td><td>0.002886828</td><td> 0.6397835</td></tr>\n",
+       "</tbody>\n",
+       "</table>\n"
+      ],
+      "text/latex": [
+       "A anova: 7 × 4\n",
+       "\\begin{tabular}{r|llll}\n",
+       "  & npar & Sum Sq & Mean Sq & F value\\\\\n",
+       "  & <int> & <dbl> & <dbl> & <dbl>\\\\\n",
+       "\\hline\n",
+       "\tap & 2 & 0.060188834 & 0.030094417 &  6.6695746\\\\\n",
+       "\tvc & 2 & 0.016717041 & 0.008358521 &  1.8524292\\\\\n",
+       "\tf & 2 & 0.426138058 & 0.213069029 & 47.2207114\\\\\n",
+       "\tap:vc & 4 & 0.037956573 & 0.009489143 &  2.1029996\\\\\n",
+       "\tap:f & 4 & 0.022980380 & 0.005745095 &  1.2732375\\\\\n",
+       "\tvc:f & 4 & 0.006694608 & 0.001673652 &  0.3709175\\\\\n",
+       "\tap:vc:f & 8 & 0.023094621 & 0.002886828 &  0.6397835\\\\\n",
+       "\\end{tabular}\n"
+      ],
+      "text/markdown": [
+       "\n",
+       "A anova: 7 × 4\n",
+       "\n",
+       "| <!--/--> | npar &lt;int&gt; | Sum Sq &lt;dbl&gt; | Mean Sq &lt;dbl&gt; | F value &lt;dbl&gt; |\n",
+       "|---|---|---|---|---|\n",
+       "| ap | 2 | 0.060188834 | 0.030094417 |  6.6695746 |\n",
+       "| vc | 2 | 0.016717041 | 0.008358521 |  1.8524292 |\n",
+       "| f | 2 | 0.426138058 | 0.213069029 | 47.2207114 |\n",
+       "| ap:vc | 4 | 0.037956573 | 0.009489143 |  2.1029996 |\n",
+       "| ap:f | 4 | 0.022980380 | 0.005745095 |  1.2732375 |\n",
+       "| vc:f | 4 | 0.006694608 | 0.001673652 |  0.3709175 |\n",
+       "| ap:vc:f | 8 | 0.023094621 | 0.002886828 |  0.6397835 |\n",
+       "\n"
+      ],
+      "text/plain": [
+       "        npar Sum Sq      Mean Sq     F value   \n",
+       "ap      2    0.060188834 0.030094417  6.6695746\n",
+       "vc      2    0.016717041 0.008358521  1.8524292\n",
+       "f       2    0.426138058 0.213069029 47.2207114\n",
+       "ap:vc   4    0.037956573 0.009489143  2.1029996\n",
+       "ap:f    4    0.022980380 0.005745095  1.2732375\n",
+       "vc:f    4    0.006694608 0.001673652  0.3709175\n",
+       "ap:vc:f 8    0.023094621 0.002886828  0.6397835"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "library(lme4)\n",
+    "\n",
+    "# Fit mixed-effects model\n",
+    "model <- lmer(Ra ~ ap * vc * f + (1 | Run), data = data)\n",
+    "\n",
+    "# ANOVA table\n",
+    "anova(model)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "b876fbbe",
+   "metadata": {
+    "papermill": {
+     "duration": 0.008614,
+     "end_time": "2026-06-25T21:16:52.522254",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:52.513640",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "This analysis fits a mixed-effects model to explain surface roughness (Ra) using machining parameters and their interactions, while accounting for variability between experimental runs. "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "02f47484",
+   "metadata": {
+    "papermill": {
+     "duration": 0.008705,
+     "end_time": "2026-06-25T21:16:52.539624",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:52.530919",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "## 10. Model Effects"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "94e7b453",
+   "metadata": {
+    "papermill": {
+     "duration": 0.008391,
+     "end_time": "2026-06-25T21:16:52.556514",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:52.548123",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 10.1 Main Effects\n",
+    "\n",
+    "#### Depth of Cut (ap)\n",
+    "- F = 6.67, p = 0.0044  \n",
+    "\n",
+    "Depth of cut has a statistically significant effect on surface roughness. This indicates that variations in cutting depth produce systematic changes in surface quality even after accounting for within-run variability.\n",
+    "\n",
+    "---\n",
+    "\n",
+    "#### Cutting Speed (vc)\n",
+    "- F = 1.85, p = 0.176  \n",
+    "\n",
+    "Cutting speed is not statistically significant. Its effect on surface roughness is not distinguishable from experimental variability within the current design.\n",
+    "\n",
+    "---\n",
+    "\n",
+    "#### Feed Rate (f)\n",
+    "- F = 47.22, p ≈ 1.53 × 10⁻⁹  \n",
+    "\n",
+    "Feed rate is the dominant factor in the model. The extremely strong statistical significance indicates a robust and highly consistent effect on surface roughness across all experimental conditions."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "73eac13e",
+   "metadata": {
+    "papermill": {
+     "duration": 0.008463,
+     "end_time": "2026-06-25T21:16:52.573521",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:52.565058",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 10.2 Interaction Effects\n",
+    "\n",
+    "#### ap × vc\n",
+    "- F = 2.10, p = 0.108  \n",
+    "\n",
+    "#### ap × f\n",
+    "- F = 1.27, p = 0.305  \n",
+    "\n",
+    "#### vc × f\n",
+    "- F = 0.37, p = 0.827  \n",
+    "\n",
+    "#### ap × vc × f\n",
+    "- F = 0.64, p = 0.738  \n",
+    "\n",
+    "None of the interaction terms are statistically significant.\n",
+    "\n",
+    "### Interpretation\n",
+    "\n",
+    "The absence of significant interaction effects suggests that the machining parameters operate largely in an **additive manner** within the experimental region. That is, the effect of each factor on surface roughness does not meaningfully depend on the levels of the other factors."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "dc187b54",
+   "metadata": {
+    "papermill": {
+     "duration": 0.008804,
+     "end_time": "2026-06-25T21:16:52.590952",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:52.582148",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "## 11. Model Assumptions and Diagnostic Checks\n",
+    "\n",
+    "Before final interpretation of the mixed-factorial model results, the validity of model assumptions is evaluated. These checks ensure that statistical inference based on the model is appropriate and reliable."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "d482a153",
+   "metadata": {
+    "papermill": {
+     "duration": 0.008898,
+     "end_time": "2026-06-25T21:16:52.609411",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:52.600513",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 11.1 R Code: Preparation for Diagnostic Checks"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "3267da17",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-25T21:16:52.632951Z",
+     "iopub.status.busy": "2026-06-25T21:16:52.631292Z",
+     "iopub.status.idle": "2026-06-25T21:16:52.651523Z",
+     "shell.execute_reply": "2026-06-25T21:16:52.649371Z"
+    },
+    "papermill": {
+     "duration": 0.03458,
+     "end_time": "2026-06-25T21:16:52.654702",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:52.620122",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# Extract residuals and fitted values from mixed model\n",
+    "residuals_m <- resid(model)\n",
+    "fitted_m <- fitted(model)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "3ceb38a6",
+   "metadata": {
+    "papermill": {
+     "duration": 0.008864,
+     "end_time": "2026-06-25T21:16:52.673580",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:52.664716",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 11.2 Assumption: Normality of Residuals"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "id": "5284b23c",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-25T21:16:52.696520Z",
+     "iopub.status.busy": "2026-06-25T21:16:52.694286Z",
+     "iopub.status.idle": "2026-06-25T21:16:52.807595Z",
+     "shell.execute_reply": "2026-06-25T21:16:52.804788Z"
+    },
+    "papermill": {
+     "duration": 0.12805,
+     "end_time": "2026-06-25T21:16:52.810495",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:52.682445",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "data": {
+      "image/png": "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\nSd9vwbIP9XoRKdO+u4VhUk+fFnYncxZKr09/nKErbv5y/6xNyN2GL2qLPw9rp1Gnxpzef/JR\ntjGlGr/rZWP+ysfMzVuuftvM8ducu97u9n3lQn/7m/+Vv0QABQTBDsA/K9tj04cTCn9/Jy41\n9li7GWeWW2cfkJF8bf/jzAmz6jN7PtulNis8s37xlnv+EJHHV9eL/CUTqFTqHwZWz/FDLWyr\nFX8m02Rd9StSt9qfBzd3fO59qj59+og+4/fje4+s+HLTlavXrl0Pvfp7+JNczXX9nZp25teT\n00UkNfZ4Dt36VFFZikhMUExWW3Vb8+hzU9q125Nt7EfXYlaVc3rlY/6bs3D26nFgTce/633l\nLxFAwcGlWAC5oDKb++sklUolIkEz2x2NzX6nlzblVtbrkmXtsvU6e2XGr4zkG9kPrLEv+reT\nZ5ocW5+dwcpRbOi25pWKVmnYbuiYqSs37U+yLO7Xb/TS7xq/+F0v9mG9YoYXqU/2Hfrr6WtT\nbvWqUrLv3P0issP/vqHRwq5mffucHyaRp8fMkZm13VtVfIfN+CE0eF1py5z/VOVffIkACg6C\nHYBcca786XfvlhQRbXrUyPlXsvVqrNyzXt+/nZCt9/GVWMMLM8vSzx1Y9VzLv6LPeNLap8eB\n0MciUm3ossj4yMBDv373zfQudZ6f23sJ1Se3yjy+Xj9k3IFnPi99YO3a6y9Hrf20RYOPP5l7\nL97Q7NZ8ilGOaZBtVWx6Utzti8cWju/jYvai3/n/4ksEUFAQ7ADkVt/N6wqba0REm5z9mfFm\n1hUaOWau6zw/ccuzXbqMmAlHIgyv7d/pntdFxt+bc/Lp7NfkqX2cn04H3vrhX80zFam2sFsx\nG8PrkGUdJ267ntmhMh83c5SLuUZEjq+Yn/UMiUlLmohIiUa7n9+MwHAd9pWPmXcKzpcI4JUR\n7ADklqVDo11ja/xd78z+mfvrRgZ92nnKpnS9iIg25e7ELrXPPF3L+d7XzfK6SG3an2s21+3M\nXAoQfuL7bt+G/KvjqswW7Zhk2GBFr0uf2aVS837jtx84GXrjRnxR35Gd3n52bKVB2/u52hjn\nmP/OK3+JyRE8pgwoGPJjszwAJuXZDYrfuxL1bJc2LbL+X3dcy9qgOD0p1NfJKqvdwt61eg0P\n+2funytWd3TWo8Ge3aA426dnbVBsaV//2fb69pmfW2lQQFZjbNiEbJWkxp4wf2Z/u7cqe3u9\n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\nhw49evTo6tWrK1eu3KVLFx8fn+jo6K1bt16/fv2NN96YPn266dYWAAAIIThip1Rjx46Nj4/f\nvn372LFj3d3dhRBly5YNDQ09ePCgVqsdNmzYy2ZcvXp1TEzMnDlzjKnOwNvbe8WKFampqQsW\nLDC0qFSqlStXLl682NHRMSIiYvz48Z9//nlaWlp4ePju3butrKyKdQUBAEB2BDsFio2N3bFj\nR8eOHVu3bp2lq1q1au+9997p06f/+OOPHOc9ePCgRqPp2rVr9q5mzZp5eXkdPHjQ2CJJUmho\n6IULF27fvn3ixImrV6/evn173LhxWq22CFcHAADkE8FOgS5fvpyWlta8efMcew3t586dy7H3\n0aNHjo6O1tbWOfZ6eHjExMRkb/f09AwICKhYsWJBSwYAAEWAYKdAaWlpQggLC4scew3tqamp\nOfY6OTnFxsampKTk2Hvv3r2XPbsOAACYHcHOpNLS0q5fv379+nVD9iom3t7eQog///wzx17D\nSVgfH58ce5s3b56enr558+bsXZGRkbdu3WrWrFmRFQoAAIoUwc5Erl271rdvXycnp4oVK1as\nWNHJyalv377Xrl0rjvfy8PBo0KDBt99+e/369SxdcXFxERERrq6uTZo0yXHekJAQJyenUaNG\nnT59OnP7nTt3BgwYYGFhMXTo0OKoGQAAFB6POzGFw4cPd+jQIS4urkWLFo0bNxZCHDlyZNWq\nVdu2bdu1a9fLMlZhhIeHt23btm3btt98843xQcHnzp0bMGDArVu3lixZotHk/NE7OTmtXLky\nKCioQYMGwcHBLVq00Gg0x48fX7FiRXx8/IIFC6pWrVrk1QIAgCJBsCt28fHxXbp00ev1e/bs\nadOmjbH9559/7tKlS1BQ0MWLF4v8Wb6tW7devHjx0KFDmzVr5uvr6+Pjc//+/dOnT0uSNGXK\nlEGDBuUyb8eOHQ8ePDhy5MilS5can0js7++/du3aDh06FG2dAACgCHEqttgtXbr0/v378+bN\ny5zqhBBt2rT58ssv79+/bwxPRWvgwIGnTp0aOnSoRqM5efLk06dPQ0JCjhw5Mnny5DznbdSo\n0ZEjR65cubJt27atW7eeOXPmzJkzpDoAAF5xHLErdnv27LGxsenZs2f2rl69eg0bNuznn38e\nNWpUcbx11apV58+fX+DZK1WqVKlSpSKsBwAAFCuO2BW76OhoDw8PS0vL7F2WlpYeHh7R0dGm\nrwoAACgPwa7YOTg4xMbGvqw3NjbW3t7elPUAAAClItgVu/r168fExBw9ejR7V2RkZExMTP36\n9U1fFQAAUB6CXbEbOHCgRqP54IMPshy3i42NNdzZMHDgQHPVBgAAlIRgV+z8/f0/++yz33//\nvXbt2nPnzo2MjIyMjJw7d26tWrV+//33qVOn+vv7m7tGAACgBNwVawrjx48vV67cxIkTR48e\nbWx0cXFZsmRJ7o+UAwAAyD+CnYmEhoYGBwfv3bv3/PnzkiRVrVq1devW1tbW5q4LAAAoB8HO\ndKytrTt27NixY0dzFwIAAJSJa+wAAAAUgmAHAACgEAQ7AAAAhSDYAQAAKATBDgAAQCEIdgAA\nAApBsAMAAFAIgh0AAIBCEOwAAAAUgmAHAACgEAQ7AAAAhSDYAQAAKATBDgAAQCEIdgAAAAqh\nMXcBJcaFCxesrKwKMGNaWtqKFSu8vb1VKmJ0Aen1+suXL/v6+jKGBcYYFgmGsfAYw8JjDAtP\nr9ffuHGjf//+Wq22ALNfuHChyEsqKgS7vBk+9UGDBpm7EAAAUGS+/vrrwsxesFBY3Ah2eQsO\nDk5PT09OTi7Y7H/88cfatWubN2/u7e1dtIWVHjdu3Pjtt98Yw8JgDIsEw1h4jGHhMYaFZxjD\n3r1716pVq2BLsLa2Dg4OLtqqioaMYrZhwwYhxIYNG8xdSAnGGBYeY1gkGMbCYwwLjzEsPAWP\nIafnAQAAFIJgBwAAoBAEOwAAAIUg2AEAACgEwQ4AAEAhCHYAAAAKQbADAABQCIIdAACAQhDs\nAAAAFIJgV+ysra2N/0XBMIaFxxgWCYax8BjDwmMMC0/BYyjJsmzuGhQuIyPjl19+efPNN9Vq\ntblrKakYw8JjDIsEw1h4jGHhMYaFp+AxJNgBAAAoBKdiAQAAFIJgBwAAoBAEOwAAAIUg2AEA\nACgEwQ4AAEAhCHYAAAAKQbADAABQCIIdAACAQhDsAAAAFIJgBwAAoBAEOwAAAIUg2AEAACgE\nwQ4AAEAhCHYAAAAKQbADAABQCIIdAACAQhDsTOHpnQNjgjtUdney1Fo6uft2CB69/2aiuYsq\nefRpDxdOGtKwqk8ZGwtbR5cGrbst3n3Z3EWVVEkPVtatW/fU0zRzF1KC6PcsmtSqVkV7SyvX\n8v59P/ribqre3CWVVHz9CozNYOEpfo8sybJs7hoULuXR3toV2l9KTvdv8U7jauXunT+888B5\njZXPd9fPvOtmY+7qSgx9eszA2n7fnH1i793g3TfrJN0+u/Pnw6myqt+iqOWhNc1dXcmza0j1\nDl+fPxyva2JvYe5aSoaNHzbsPv+4rUfdTm/WeHz21z0nbznV7HstaoWDWjJ3aSUPX7+CYTNY\neKVijyyjmG3q6C2ECFl20thy6MsOQgiPlmvMWFWJcyqssRCiwjthCel6Q8v942s9LdVqC7cz\nT9PMW1vJknj/8ro5wzSSJIQ4HK8zdzklQ/z1BWpJcqjU764uw9CyakgNIUSruafNW1iJw9ev\nMNgMFl5p2CMT7IpdbTsLC/uAjMxNGUnOWrVlmebmKqkkGuNlL0nqQ3Ev7Al+G+YvhOh84K65\nqipxWlVwyvx3HXvWfPqpWyUhxOhTMcaW9JRrTlqVdbkgM1ZV4vD1KyQ2g4VXGvbImuI/Jli6\nyanlW73l5/zuCxczqiwtVeKpxDmIv2FfrM7CvmFThxcGzbONu5h/9uGFeNHiNXMVVrL0G/Ov\nTmkZQohjMz7d8DDJ3OWUGAv23VNpHKfUeJ5L1JY+4yo4jLuy5XhiWgM7rRlrK0H4+hUSm8HC\nKh17ZIJdMZMstm/fnqXt1Lohd3UZvl1Hm6WiEuqbQ8dlTdksjadWXhNC+DVwNkdFJVL/ESMN\n/1i+aDp71nyS9Um7HqdYlQu0f/FyukYBzuJK7JaYZIJdPvH1KyQ2g4VVOvbIBDvTubVjytgV\np25dPnUo6lqdd0fuXPa2uSsqSWrWqpWlJfrQ3D7bblg6NJ1Tgy0ailGG7qZOL5exyXpxuoO/\ngxDiUhK3dsJE2AwWIQXvkXnciekk3zsT9efpS5dvS5JKlfb0ymOduSsqqeSMuNXTBlVp+VGy\nynnWL987argtEcVInxYjhFCpHbK0a+20QoikkrfkOwAAD9RJREFUOIIdzIDNYCEpeI/MEbui\nJGfEzZwdYXxpYVd71LD2xpd+oRvPhQohpx5c8++3+oW1q3P3yb0fLPif8UW5j6EQ4uLuiMFD\nxh64nlC2Wrtl367tVssp2zJKuzzHEH+LSlNWCKHPSMjSnpaYJoSwtGcrClNjM1h4St4jm/vu\nDUVJT7mWeWzt3ENfNuW6lp5CiH/fiDNleSVCLmOYkfZo5sDmQgitXaUxX2xJytCbsc5XWX6+\nh8v8nAS3JeaPPiPRSiXZuoVkaf+1p68Q4uOrsWapqkTj61dgbAaLg8L2yJyKLUpqS5/Mg5tw\nb3HinS+CgoJGrbqSZcqqLV2FEFFxqeYo85WWfQwN7bL+6ZjWNccu+61W14mn752fPaKztUoZ\nf1sVvZeNIQpGUtm2K2uV8vjHlBd/aeLUyUdCiC7lrM1TFkofNoOFVEr2yAS74qXSltu6deva\nuYeytF85+EAIEeBoaY6iSqSo8HafH7xXd8TaUxun+XETIkxrWEv3jLSHM6/GGlv0aTEzbsZb\nl+vcmN9OgKmwGSykUrJHJtgVLxvX3p2crWP++HDpyRhj44NjiwcdvGdZpvkoTzsz1laiZLwX\nflxrW2Pvf3uauxKURo3/+7EkSV/1nGk8aHdwZpc7uoyGn0w1a10oVdgMFlYp2SNz2W9xk5bu\nmFyp2cTBDSssa9exuqft3ctn9x44kaZyDNu+0Yaj6PmT8njXiYRUjVVSUNvW2XsbL9gcVj3r\ns52AImTv88G697/uGRFWudn5fm+9/vjs3kXfHSpbvf+WYf7mLg2lBZvBolAq9sgEu2Ln2mjc\n9eOVJkxdsOu3vcd/SrQr59W6x4gR/5rSvrqjuUsrMXSxe4UQ6SnX9u+/lr3XNl4hF0bgVdZj\n4UnrKmOnRWz4ImyHdbnyPT4Mnz37o7I8YwKmwmawSJSGPbIky7K5awAAAEAR4Bo7AAAAhSDY\nAQAAKATBDgAAQCEIdgAAAApBsAMAAFAIgh0AAIBCEOwAAAAUgmAHAACgEAQ7AAAAhSDYAQAA\nKATBDgAAQCEIdgAAAApBsAMAAFAIgh0AAIBCEOwAAAAUgmAHAACgEAQ7AAAAhSDYAQAAKATB\nDgAAQCEIdgAAAApBsAMAAFAIgh0AAIBCEOwAAAAUgmAHAACgEAQ7AAAAhSDYAQAAKATBDgAA\nQCEIdgAAAApBsAMAAFAIgh0AAIBCEOwAAAAUgmAHAACgEAQ7AC840KuKlJedT1IMk+2L05m7\n3nz5oa6bJEnXdRlFsrSf3/aWJOlIQmrukz0689OkYX3qVa3oZG9l7eBUqXqDfiM+3X8pvkhq\nKLwsY5LPlQLwitOYuwAArxbn+m07p9Q0vozetysyTlf1rU7VbZ5vLty06qfmqC2f4m984l1n\nfpMFJ3b2qmyeCuT01RO6DJz1Q5petvOoFtC4tbWcdPX08ZXzTqyaP6vrp6vWT+5q4r+qzT8m\nAEyCYAfgBTXGLNgy5vnLH+q6vRP1oOuiNVO9HTJPdsDUdf0Nsj4lNjY2MVVvbHlj6+HzKele\nFmrTFLB1ZOOQL0/auLdYsGLBwHY1n2U4fdQPX7/ff/TGKd3upOw+FPaWaYoxMPuYADANTsUC\nKDGSHhXwRKGtd+WqVatqpKItJ2dPzod3mfc/S4dGhy78HPo81QkhVHU6ffDrhX2v22qPzOiw\n4FpxnZPV6zLFt5cz5ZgAMBmCHYCCk/Vpm8KH1av4mo2FTfkqr/f5eH58hvy8NyNuTdiIpv7e\nDtaWruV92/YZ89P5uCxLSEu8MGN475re7tZaS2f3ih2CR+2/mmDs3RdUSaW2EUJs+s/A8uVs\n6310PM8lL6zi5Fjpv0KIg/39JEmaf++pEGJXE4/M15Olxp39z/vd/DxdLC1svXwD3v9k0cO0\nF7JQ4o39H4W8U9XTxUqrtSvjWq9l5y+2nM7nmKwJnivLcq/N39VxsMjea+XceNvqQFnOmBqy\nxdCytYaLJElxmcZNCBHiZmddtk3+SzJc8piefHHUOw1tbKw0aqvyVV4PGbvQ8HHkZ0yyyPOz\nO7hq+tuNa5a1t7awtvOt3WLCVzvkHBcEwMRkAHi57XVchRCTrsdlaf+1p68QYlC3alo7v+4D\nh388fJC/s5UQwj/0R8ME+ozED5u7CyGcqjfp2X9QYNumlipJbeE2e/8940LSnv7R6jVbIYRX\nraa9BvRr27SWWpI0VhW+ufzX2+3tXFFSWUeGtbWwr9i1/wczvr2W55LPrFs+d2obIYRvv/9E\nREScfpomy/LOxq8JIa6lpMuyrIs/2tzFWpJUNZu0HTAo5I1arkIIlwZDUvR/VZX0YJuPlUaS\ntPXbdxn0/ns9g94sq1FJkmr84WjDBHvaVxBCHI7XZR8ufXpcOa1aY1nBuLScpol11qo1lhWS\nM2RZlrf4lxNCxKa/MEMfV1srxzeNL/MsyfBxjGnoqrWr0m3Ahx8PD61R1lII4T9oZ37GJMtK\n5fnZHZ3WTghh7VqjR8ig0JAeVZ0shRBtwv730nUGYCoEOwC5yT3YWTm1jnyQbGhJTThV3lJj\nYV/f8PJUeHMhRMColbpniSX66GoPS7WFXd1HaX81bersI4R4a9qPxsVe2vaJSpIcvAcbXu7t\nXFGS1OXcO5xOSDVOk+eSY6+OEUK0WHHROEvmELOotacQYsS3Z551pi/qVVkI0WvPLcPro/+s\nKYToueaCcfaYqNlCCM+Wf9WZS7BLjtkihCjj85/cR3WUl70QYn+sTs5fsMuzJMPHYe385tFn\nH0dK7CE3C7XW9nXDy9zHJMtK5TXC+kpWGgv7+sZ5dfEnnLQqq7Jtcl9rACbAqVgABddqydJG\nLlaGf2vtavV3s8nQ3TG8HBF+3NKh2b5ZfSyeXcXl1jB4Q2jV1MTfw2/ECSHkjLjBP9y0cmq/\nY0I74wJ93/nsi7ou8TcWr3+YbGiR5YyGixfUsNMap8lzyblITzo7fP9dx8oTv+ju/6xNHTJv\nVuPGjdMPPTK89mz7rxUrVnzV3dc4l2O1bkII3bOSclt+yjUhhMYqjztPK1lphBDXUtLzXODf\nKqn1sqUNn30clmWaDna3zdDdzudbZJb7CMv6pJu6DLXWzUnz1x7Ewj7g2PETh37+bwHeC0DR\n4q5YAAUX3Mw180sr1V9BIC3x5K+xOrvXqm9YsSzzBLG2KiHEsROPRGXHpIcbnqTrvZuMyXL9\n/lvD/cSAB2sux/V0sTa0dGvgYuzNz5JzKTjx7nydXvbv0/WFsp2DjhwJMr707Ni9nxByRtK1\ncxevXr9+/eqVg9sX5D4ORhorH/Es3uXiekq6EKKydX63wPksqUdjl8wvjcHrb8lzhKXKlcPf\n8Pho747yVVv07x3YslnTxk0aVq5dtwDvBaDIEewAFJzHSx6WkZ58UQiReG9JaOiS7L3Jd5OF\nEBm6G0II+yoOWXodqjsIIRJvJYkmf7WUt3z+LvlZci50T24Y3+Jl0pPOT/lgxIL1e5+kZkgq\nrbu3b50GrYS4mvuSDSzLvOGkVcVHL0mVJ1m85IZTOSNh5f0kjZVPQ/sc7q4oTEnO2iI4CZOf\nER69+w+nGVMivtnw5WdjvxRCUlm83ipo4sx5PQJcss8CwJQ4FQug4KSXZBe1hacQwr3hthwv\nATk6qqYQQm3pLYRIuJSQZd7Ey4lCCBsPa2OLSvp7S86F1sFJCJF0MymXaSY1aT5t5Z43Rs7+\n7dTlRJ3u7tWzO9bOyX2xRpLGcXJN5/SU6x8evJelK/7S1j/jUoUQN3cMfpiW4dZ4quXLHzWS\nkPHCXbqFKenvys8ISxqnAZO+PHoxOvbWuR/WLR7Z960rv24MblrzYDw/XAGYGcEOQNGzKNPc\n30Ybf3VFlgeqXV41bdSoUYfiU4UQNuW6OWpUD47MzfK8jV/mXRBC9PArU+Al58LOPVSSpKvf\n/Ji5MTXhiFqlcq29RgiRnnRm5h+PHCvP+m7GyGa1KttoJCGEPu1hnqtsFLJ6pBBiVeceZ56m\nPW+V04e07NOwUuOvd+8ICt4iSdqpqwIzzxWX/nyFMlKu7ol9/ltthS/pb8lzhFMefT9hwoQ5\n390QQpTxqtaxZ+ic5dsP/LtuRuqD8DOPi6kqAPlEsANQHFQLB1ZNitnc/t/bjPkg4doPb78/\nZeGyo3XstEIISeO46O3yyY93BM7aZ5zt6s4pw449cKgQ2tfVpsBLNtCn5/CYXosy/5hc0+nx\n2XGTtl951iZvGjVIL8uNPmkihBCSRiVJ6UmX0p89lk2f9vCrYV2EEELk66dmy/pP/G5onZQn\nBxtXe3vV/kt/tUqaJSd31Mw4O6R9p98TU1v/5+f+XnaGHmtXSyHEtL13n5WTunzEu0mZj9gV\nuiSjHMckmzxHWA4PD/90+CePni9NPvb7YyHE627WOS4RgOkU2f21AJQo98ed7I1Nydw4zaeM\n2uI1w78zdHf+r6qjEMLFL6DbgCEh3do7alQqtd1n++4ap09NjPqHm40Qwqd+q37vD+7YKkAt\nSRorn9VXnj/HLvu75Lnk+FszhRCOfl2m/HvyoTid/OKjPZLu76xhbyFJ6oBWHQd/MKh9Iy8h\nhFPNAQnPHjgS1txdCFGxeddxn0weMbhPPTcb94Y9y1tqtLY1pn/+tZzr407+ok9b8VEHjSQJ\nIRx9arV5+91O7d6s4WknhJAkSQhRs/uU+6kZhmmjD30kSZJK49AldMQnHw9rX99NktQB9haZ\nH3eSZ0mGj2PH4+TMVcyp5KjSlM3PmGRZqTxHePobHkIIW886/9d74NDB/d+o6SaEcGs6Ou3l\nT+8DYBoEOwC5KXCwk2U5XXdr3rgBdSu9Zq3VulbweyMw9LuTD7IsJzX+7LRhPfzLu1hptI4u\n3u17jdx/NcHYm2Owy3vJGcmTujVxtNFa2JT95v5TOVuIeXo3cmxIp4puZbUaSxfvmiEfz72n\ny3i+8JQbn70fWNHVwcK6bK3Gb46YuUmnl3+Z1MXRWmvvXk/OT7CTZVmWH/6xa/yQXrV9K5Sx\ntdBY2nj61uo9Muzw5SfbwoK1kuRSf7xxyshvprSoXbWsjUYIodI4Dv3ity3+5TIHuzxLyjPY\n5TkmWVYq9xHOSH04f8Kgun5eNhZqjZVtpdebDP9s+SNiHfAKkGSZn4EBAJO6tD18q/OAj5u6\nvdisf3jrmtrFx8kq53uNASBPBDsAAACF4OYJAAAAhSDYAQAAKATBDgAAQCEIdgAAAApBsAMA\nAFAIgh0AAIBCEOwAAAAUgmAHAACgEAQ7AAAAhSDYAQAAKATBDgAAQCEIdgAAAApBsAMAAFAI\ngh0AAIBCEOwAAAAUgmAHAACgEAQ7AAAAhSDYAQAAKATBDgAAQCEIdgAAAApBsAMAAFAIgh0A\nAIBCEOwAAAAUgmAHAACgEAQ7AAAAhSDYAQAAKATBDgAAQCH+H5epRzSo1oNcAAAAAElFTkSu\nQmCC"
+     },
+     "metadata": {
+      "image/png": {
+       "height": 420,
+       "width": 420
+      }
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# 2. Normality check (Q-Q plot)\n",
+    "qqnorm(residuals_m, main = \"Normal Q-Q Plot\")\n",
+    "qqline(residuals_m, col = \"red\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "c9f0463e",
+   "metadata": {
+    "papermill": {
+     "duration": 0.01062,
+     "end_time": "2026-06-25T21:16:52.832843",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:52.822223",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "The Q-Q plot of residuals shows that the central portion of the data aligns closely with the theoretical normal distribution line, indicating that the bulk of the residuals are approximately normally distributed.\n",
+    "\n",
+    "However, some deviations are observed in the tails, where points slightly diverge from the reference line. This pattern suggests mild tail non-normality, which is common in experimental measurement data due to occasional extreme observations or process variability.\n",
+    "\n",
+    "Importantly, because the central region — where most observations lie — adheres closely to the diagonal reference line, the normality assumption is considered reasonably satisfied for the purposes of inference in the mixed-factorial model.\n",
+    "\n",
+    "Given the robustness of mixed-effects models to mild deviations from normality, especially in balanced experimental designs, these minor tail departures are not expected to materially affect inference."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "f16e271b",
+   "metadata": {
+    "papermill": {
+     "duration": 0.010149,
+     "end_time": "2026-06-25T21:16:52.853002",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:52.842853",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 11.2 Assumption: Constant Variance (Homoscedasticity)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "id": "e314bbb5",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-25T21:16:52.876959Z",
+     "iopub.status.busy": "2026-06-25T21:16:52.875166Z",
+     "iopub.status.idle": "2026-06-25T21:16:53.028793Z",
+     "shell.execute_reply": "2026-06-25T21:16:53.026799Z"
+    },
+    "papermill": {
+     "duration": 0.168676,
+     "end_time": "2026-06-25T21:16:53.031651",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:52.862975",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Loading required package: carData\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "\n",
+      "Attaching package: ‘car’\n",
+      "\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "The following object is masked from ‘package:dplyr’:\n",
+      "\n",
+      "    recode\n",
+      "\n",
+      "\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"dataframe\">\n",
+       "<caption>A anova: 2 × 3</caption>\n",
+       "<thead>\n",
+       "\t<tr><th></th><th scope=col>Df</th><th scope=col>F value</th><th scope=col>Pr(&gt;F)</th></tr>\n",
+       "\t<tr><th></th><th scope=col>&lt;int&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th></tr>\n",
+       "</thead>\n",
+       "<tbody>\n",
+       "\t<tr><th scope=row>group</th><td> 26</td><td>13.85797</td><td>1.83848e-37</td></tr>\n",
+       "\t<tr><th scope=row> </th><td>297</td><td>      NA</td><td>         NA</td></tr>\n",
+       "</tbody>\n",
+       "</table>\n"
+      ],
+      "text/latex": [
+       "A anova: 2 × 3\n",
+       "\\begin{tabular}{r|lll}\n",
+       "  & Df & F value & Pr(>F)\\\\\n",
+       "  & <int> & <dbl> & <dbl>\\\\\n",
+       "\\hline\n",
+       "\tgroup &  26 & 13.85797 & 1.83848e-37\\\\\n",
+       "\t  & 297 &       NA &          NA\\\\\n",
+       "\\end{tabular}\n"
+      ],
+      "text/markdown": [
+       "\n",
+       "A anova: 2 × 3\n",
+       "\n",
+       "| <!--/--> | Df &lt;int&gt; | F value &lt;dbl&gt; | Pr(&gt;F) &lt;dbl&gt; |\n",
+       "|---|---|---|---|\n",
+       "| group |  26 | 13.85797 | 1.83848e-37 |\n",
+       "| <!----> | 297 |       NA |          NA |\n",
+       "\n"
+      ],
+      "text/plain": [
+       "      Df  F value  Pr(>F)     \n",
+       "group  26 13.85797 1.83848e-37\n",
+       "      297       NA          NA"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# Load package for Levene's test\n",
+    "library(car)\n",
+    "\n",
+    "# Levene's test for homogeneity of variance across main factor combinations\n",
+    "\n",
+    "leveneTest(Ra ~ ap * vc * f, data = data)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "78835ac6",
+   "metadata": {
+    "papermill": {
+     "duration": 0.010309,
+     "end_time": "2026-06-25T21:16:53.053021",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:53.042712",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "Levene’s test for homogeneity of variance across treatment combinations is highly significant (F(26, 297) = 13.86, p < 0.001).\n",
+    "\n",
+    "This provides strong statistical evidence that the variance of surface roughness is not constant across the different combinations of machining parameters (ap, vc, f)."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "35e23ddd",
+   "metadata": {
+    "papermill": {
+     "duration": 0.010718,
+     "end_time": "2026-06-25T21:16:53.074706",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:53.063988",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 11.4 Assumption: Independence via Random Effects\n",
+    "Independence is addressed through the inclusion of a random intercept for experimental runs in the mixed-effects model.\n",
+    "\n",
+    "This structure accounts for correlation among repeated measurements taken under identical machining conditions, ensuring that residual dependence does not bias fixed-effect estimates or standard errors."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "76cd3c16",
+   "metadata": {
+    "papermill": {
+     "duration": 0.010743,
+     "end_time": "2026-06-25T21:16:53.095866",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:53.085123",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 11.5 Summary of Diagnostic Checks\n",
+    "\n",
+    "The diagnostic analysis indicates that several key assumptions of the mixed-factorial model are only partially satisfied.\n",
+    "\n",
+    "Residual diagnostics suggest that normality is reasonably adequate, with only mild deviations in the tails. However, more serious concerns arise regarding variance homogeneity."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "520ea8b8",
+   "metadata": {
+    "papermill": {
+     "duration": 0.010471,
+     "end_time": "2026-06-25T21:16:53.116924",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:53.106453",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "## 12. Relationship Between Machining Parameters and Variance of Surface Roughness\n",
+    "\n",
+    "To better understand the source of heteroscedasticity in the machining process, this section examines whether the variability in surface roughness depends on the full set of machining parameters: depth of cut (ap), cutting speed (vc), and feed rate (f). Rather than assuming a single driver of variance, we evaluate whether multiple factors contribute to changes in dispersion.\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "7a58c5fd",
+   "metadata": {
+    "papermill": {
+     "duration": 0.010575,
+     "end_time": "2026-06-25T21:16:53.139034",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:53.128459",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 12.1 Methodology: Residual-Based Variance Modeling\n",
+    "\n",
+    "Variance is assessed indirectly using the absolute values of normalized residuals from the fitted mixed-effects model. These values act as a proxy for local variability in surface roughness:\n",
+    "\n",
+    "$$\n",
+    "|e_i| \\approx \\text{local variability of Ra}\n",
+    "$$\n",
+    "\n",
+    "To identify potential sources of heteroscedasticity, regression models are fitted using each machining parameter individually and jointly."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "670a0799",
+   "metadata": {
+    "papermill": {
+     "duration": 0.010798,
+     "end_time": "2026-06-25T21:16:53.160947",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:53.150149",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 12.2 R Code: Variance Dependence on All Machining Parameters"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "id": "5047a03e",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-25T21:16:53.186488Z",
+     "iopub.status.busy": "2026-06-25T21:16:53.184781Z",
+     "iopub.status.idle": "2026-06-25T21:16:55.322806Z",
+     "shell.execute_reply": "2026-06-25T21:16:55.320664Z"
+    },
+    "papermill": {
+     "duration": 2.164782,
+     "end_time": "2026-06-25T21:16:55.336430",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:53.171648",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table style=\"NAborder-bottom: 0; width: auto !important; margin-left: auto; margin-right: auto; margin-left: auto; margin-right: auto;\" class=\"table table table-striped table-hover\">\n",
+       " <thead>\n",
+       "  <tr>\n",
+       "   <th style=\"text-align:left;\">   </th>\n",
+       "   <th style=\"text-align:center;\"> Ap_Effect </th>\n",
+       "   <th style=\"text-align:center;\"> &amp;nbsp;Vc_Effect </th>\n",
+       "   <th style=\"text-align:center;\"> Feed_Rate </th>\n",
+       "   <th style=\"text-align:center;\"> Combined </th>\n",
+       "  </tr>\n",
+       " </thead>\n",
+       "<tbody>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> (Intercept) </td>\n",
+       "   <td style=\"text-align:center;\"> 0.551*** </td>\n",
+       "   <td style=\"text-align:center;\"> 0.379*** </td>\n",
+       "   <td style=\"text-align:center;\"> −0.229 </td>\n",
+       "   <td style=\"text-align:center;\"> −0.288 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> (0.072) </td>\n",
+       "   <td style=\"text-align:center;\"> (0.072) </td>\n",
+       "   <td style=\"text-align:center;\"> (0.175) </td>\n",
+       "   <td style=\"text-align:center;\"> (0.183) </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> ap0.5 </td>\n",
+       "   <td style=\"text-align:center;\"> −0.294** </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> −0.294** </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> (0.102) </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> (0.096) </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> ap0.8 </td>\n",
+       "   <td style=\"text-align:center;\"> 0.127 </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> 0.127 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> (0.102) </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> (0.096) </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> vc350 </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> −0.031 </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> −0.031 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\">  </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> (0.102) </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> (0.096) </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> vc390 </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> 0.377*** </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> 0.377*** </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\">  </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> (0.102) </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> (0.096) </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> f_num </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\">  </td>\n",
+       "   <td style=\"text-align:center;\"> 7.234*** </td>\n",
+       "   <td style=\"text-align:center;\"> 7.234*** </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;box-shadow: 0px 1.5px\">  </td>\n",
+       "   <td style=\"text-align:center;box-shadow: 0px 1.5px\">  </td>\n",
+       "   <td style=\"text-align:center;box-shadow: 0px 1.5px\">  </td>\n",
+       "   <td style=\"text-align:center;box-shadow: 0px 1.5px\"> (1.701) </td>\n",
+       "   <td style=\"text-align:center;box-shadow: 0px 1.5px\"> (1.608) </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> Num.Obs. </td>\n",
+       "   <td style=\"text-align:center;\"> 324 </td>\n",
+       "   <td style=\"text-align:center;\"> 324 </td>\n",
+       "   <td style=\"text-align:center;\"> 324 </td>\n",
+       "   <td style=\"text-align:center;\"> 324 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> R2 </td>\n",
+       "   <td style=\"text-align:center;\"> 0.053 </td>\n",
+       "   <td style=\"text-align:center;\"> 0.058 </td>\n",
+       "   <td style=\"text-align:center;\"> 0.053 </td>\n",
+       "   <td style=\"text-align:center;\"> 0.164 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> R2 Adj. </td>\n",
+       "   <td style=\"text-align:center;\"> 0.047 </td>\n",
+       "   <td style=\"text-align:center;\"> 0.053 </td>\n",
+       "   <td style=\"text-align:center;\"> 0.050 </td>\n",
+       "   <td style=\"text-align:center;\"> 0.151 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> AIC </td>\n",
+       "   <td style=\"text-align:center;\"> 739.1 </td>\n",
+       "   <td style=\"text-align:center;\"> 737.2 </td>\n",
+       "   <td style=\"text-align:center;\"> 737.0 </td>\n",
+       "   <td style=\"text-align:center;\"> 704.5 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> BIC </td>\n",
+       "   <td style=\"text-align:center;\"> 754.2 </td>\n",
+       "   <td style=\"text-align:center;\"> 752.3 </td>\n",
+       "   <td style=\"text-align:center;\"> 748.3 </td>\n",
+       "   <td style=\"text-align:center;\"> 731.0 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> Log.Lik. </td>\n",
+       "   <td style=\"text-align:center;\"> −365.563 </td>\n",
+       "   <td style=\"text-align:center;\"> −364.589 </td>\n",
+       "   <td style=\"text-align:center;\"> −365.489 </td>\n",
+       "   <td style=\"text-align:center;\"> −345.252 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> F </td>\n",
+       "   <td style=\"text-align:center;\"> 8.939 </td>\n",
+       "   <td style=\"text-align:center;\"> 9.960 </td>\n",
+       "   <td style=\"text-align:center;\"> 18.088 </td>\n",
+       "   <td style=\"text-align:center;\"> 12.510 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> RMSE </td>\n",
+       "   <td style=\"text-align:center;\"> 0.75 </td>\n",
+       "   <td style=\"text-align:center;\"> 0.75 </td>\n",
+       "   <td style=\"text-align:center;\"> 0.75 </td>\n",
+       "   <td style=\"text-align:center;\"> 0.70 </td>\n",
+       "  </tr>\n",
+       "</tbody>\n",
+       "<tfoot><tr><td style=\"padding: 0; \" colspan=\"100%\">\n",
+       "<sup></sup> + p &lt; 0.1, * p &lt; 0.05, ** p &lt; 0.01, *** p &lt; 0.001</td></tr></tfoot>\n",
+       "</table>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# Load libraries silently\n",
+    "suppressPackageStartupMessages({\n",
+    "  library(nlme)\n",
+    "  library(modelsummary)\n",
+    "  library(kableExtra)\n",
+    "})\n",
+    "\n",
+    "# Keep original data untouched\n",
+    "data_diag <- data.frame(data)\n",
+    "\n",
+    "# Fit model\n",
+    "mixed_model <- lme(\n",
+    "  Ra ~ ap * vc * f,\n",
+    "  random = ~1 | Run,\n",
+    "  data = data_diag\n",
+    ")\n",
+    "\n",
+    "# Extract normalized residuals\n",
+    "data_diag$res_abs <- abs(resid(mixed_model, type = \"normalized\"))\n",
+    "\n",
+    "# Ensure feed rate is numeric (for regression trend test)\n",
+    "data_diag$f_num <- as.numeric(as.character(data_diag$f))\n",
+    "\n",
+    "# Individual variance checks\n",
+    "lm_ap <- lm(res_abs ~ ap, data = data_diag)\n",
+    "lm_vc <- lm(res_abs ~ vc, data = data_diag)\n",
+    "lm_f  <- lm(res_abs ~ f_num, data = data_diag)\n",
+    "\n",
+    "# Combined variance model\n",
+    "lm_all <- lm(res_abs ~ ap + vc + f_num, data = data_diag)\n",
+    "\n",
+    "# Generate the table with escape=FALSE\n",
+    "ms_table <- modelsummary(\n",
+    "  list(\n",
+    "    \"Ap_Effect\" = lm_ap,\n",
+    "    \"Vc_Effect\" = lm_vc,\n",
+    "    \"Feed_Rate\" = lm_f,\n",
+    "    \"Combined\"  = lm_all\n",
+    "  ),\n",
+    "  statistic = \"({std.error})\",\n",
+    "  stars = TRUE,\n",
+    "  output = \"kableExtra\",\n",
+    "  escape = TRUE # Prevents double-escaping of HTML characters\n",
+    ") %>%\n",
+    "  kable_styling(bootstrap_options = c(\"striped\", \"hover\"))\n",
+    "\n",
+    "# HTML conversion\n",
+    "clean_html <- as.character(ms_table)\n",
+    "\n",
+    "# Display\n",
+    "IRdisplay::display_html(clean_html)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "e6d9bf5b",
+   "metadata": {
+    "papermill": {
+     "duration": 0.011021,
+     "end_time": "2026-06-25T21:16:55.358360",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:55.347339",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "We compare four regression models used to explain variability in surface roughness (measured through absolute residuals): three single-factor models (ap, vc, f) and one combined model."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "id": "5b68f0cb",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-25T21:16:55.386593Z",
+     "iopub.status.busy": "2026-06-25T21:16:55.384843Z",
+     "iopub.status.idle": "2026-06-25T21:16:55.646714Z",
+     "shell.execute_reply": "2026-06-25T21:16:55.644758Z"
+    },
+    "papermill": {
+     "duration": 0.27919,
+     "end_time": "2026-06-25T21:16:55.649362",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:55.370172",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "\n",
+      "Attaching package: ‘IRdisplay’\n",
+      "\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "The following object is masked from ‘package:effectsize’:\n",
+      "\n",
+      "    display\n",
+      "\n",
+      "\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"table table-striped table-hover\" style=\"width: auto !important; margin-left: auto; margin-right: auto;\">\n",
+       " <thead>\n",
+       "  <tr>\n",
+       "   <th style=\"text-align:left;\"> Parameter </th>\n",
+       "   <th style=\"text-align:right;\"> Eta2_partial </th>\n",
+       "   <th style=\"text-align:right;\"> CI </th>\n",
+       "   <th style=\"text-align:right;\"> CI_low </th>\n",
+       "   <th style=\"text-align:right;\"> CI_high </th>\n",
+       "  </tr>\n",
+       " </thead>\n",
+       "<tbody>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> ap </td>\n",
+       "   <td style=\"text-align:right;\"> 0.331 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.95 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.083 </td>\n",
+       "   <td style=\"text-align:right;\"> 1 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> vc </td>\n",
+       "   <td style=\"text-align:right;\"> 0.121 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.95 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.000 </td>\n",
+       "   <td style=\"text-align:right;\"> 1 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> f </td>\n",
+       "   <td style=\"text-align:right;\"> 0.778 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.95 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.636 </td>\n",
+       "   <td style=\"text-align:right;\"> 1 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> ap:vc </td>\n",
+       "   <td style=\"text-align:right;\"> 0.238 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.95 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.000 </td>\n",
+       "   <td style=\"text-align:right;\"> 1 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> ap:f </td>\n",
+       "   <td style=\"text-align:right;\"> 0.159 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.95 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.000 </td>\n",
+       "   <td style=\"text-align:right;\"> 1 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> vc:f </td>\n",
+       "   <td style=\"text-align:right;\"> 0.052 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.95 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.000 </td>\n",
+       "   <td style=\"text-align:right;\"> 1 </td>\n",
+       "  </tr>\n",
+       "  <tr>\n",
+       "   <td style=\"text-align:left;\"> ap:vc:f </td>\n",
+       "   <td style=\"text-align:right;\"> 0.159 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.95 </td>\n",
+       "   <td style=\"text-align:right;\"> 0.000 </td>\n",
+       "   <td style=\"text-align:right;\"> 1 </td>\n",
+       "  </tr>\n",
+       "</tbody>\n",
+       "</table>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "library(effectsize)\n",
+    "library(knitr)\n",
+    "library(kableExtra)\n",
+    "library(IRdisplay)\n",
+    "\n",
+    "suppressPackageStartupMessages(library(IRdisplay))\n",
+    "\n",
+    "es_df <- as.data.frame(eta_squared(mixed_model, partial = TRUE))\n",
+    "\n",
+    "# Generate the HTML string\n",
+    "html_table <- es_df %>%\n",
+    "  kable(format = \"html\", digits = 3) %>%\n",
+    "  kable_styling(bootstrap_options = c(\"striped\", \"hover\"), full_width = FALSE) %>%\n",
+    "  as.character()\n",
+    "\n",
+    "# Force the notebook to display the HTML\n",
+    "display_html(html_table)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "94f4eb5f",
+   "metadata": {
+    "papermill": {
+     "duration": 0.011966,
+     "end_time": "2026-06-25T21:16:55.672797",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:55.660831",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "The table above shows calculated partial eta-squared (η²) effect sizes for each predictor in the model. It quantifies how much of the variability in surface roughness (Ra) is explained by each machining parameter after accounting for all other effects in the model. This helps assess the relative importance of each factor in explaining the response."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "87f53ff9",
+   "metadata": {
+    "papermill": {
+     "duration": 0.012035,
+     "end_time": "2026-06-25T21:16:55.696449",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:55.684414",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 12.3 Key Results\n",
+    "\n",
+    "The results from regression coefficients and partial eta-squared values describe how machining parameters influence **variability in surface roughness (Ra)**. Feed rate is the dominant source of variance, followed by depth of cut and cutting speed. The direction of influence refers to how each factor changes the level of Ra and its variability.\n",
+    "\n",
+    "- **Feed rate (f):**\n",
+    "  - Strongest contributor to variance in Ra\n",
+    "  - Largest effect size (η² = 0.778)\n",
+    "  - Strong **positive effect on variance level** (β = 7.234***): increasing feed rate increases surface roughness and overall variability\n",
+    "  - Dominant factor controlling instability in surface finish\n",
+    "\n",
+    "- **Depth of cut (ap):**\n",
+    "  - Moderate contribution to variance (η² = 0.331)\n",
+    "  - Direction depends on level:\n",
+    "    - ap = 0.5 → **reduces variance in Ra** (β = -0.294**)\n",
+    "    - ap = 0.8 → slight **increase in variance** (β = 0.127, not significant)\n",
+    "  - Indicates non-linear influence on process variability\n",
+    "\n",
+    "- **Cutting speed (vc):**\n",
+    "  - Smaller contribution to variance (η² = 0.121)\n",
+    "  - Directional effect varies:\n",
+    "    - vc = 350 → negligible or slight **reduction in variance** (β = -0.031)\n",
+    "    - vc = 390 → clear **increase in variance** (β = 0.377***)\n",
+    "  - Higher cutting speeds tend to increase instability in surface roughness\n",
+    "\n",
+    "- **Interactions:**\n",
+    "  - ap × vc shows meaningful contribution to variance (η² = 0.238), indicating combined effects on process stability\n",
+    "  - ap × f and vc × f show moderate to weak contributions (η² ≈ 0.159 and 0.052)\n",
+    "  - Three-way interaction contributes modestly (η² ≈ 0.159)\n",
+    "\n",
+    "- **Overall interpretation:**\n",
+    "  - Single-factor models explain only a small portion of variance (~5–6%, R² ≈ 0.053–0.058)\n",
+    "  - Combined model improves explanation of variance (R² = 0.164, RMSE = 0.70)\n",
+    "  - Feed rate is the primary driver of increased variability in surface roughness, while other factors have secondary and interaction-dependent effects"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "289528b8",
+   "metadata": {
+    "papermill": {
+     "duration": 0.048612,
+     "end_time": "2026-06-25T21:16:55.757567",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:55.708955",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 12.4 Final Interpretation\n",
+    "\n",
+    "Variance in surface roughness is primarily explained within the model by feed rate, with higher feed rates leading to increased variability in surface roughness."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "800df695",
+   "metadata": {
+    "papermill": {
+     "duration": 0.01088,
+     "end_time": "2026-06-25T21:16:55.780381",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:55.769501",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "## 13. Final Treatment of Non-Constant Variance in the Model"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "098a2897",
+   "metadata": {
+    "papermill": {
+     "duration": 0.010944,
+     "end_time": "2026-06-25T21:16:55.802470",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:55.791526",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 13.1 Rationale for the Final Approach\n",
+    "\n",
+    "Initial diagnostic checks (residual plots and variance regression analyses) showed clear evidence of heteroscedasticity:\n",
+    "\n",
+    "- Residual variance increases with feed rate\n",
+    "- Cutting speed (vc = 390) also shows elevated variability\n",
+    "- Depth of cut has a weaker and less consistent effect\n",
+    "\n",
+    "A standard homoscedastic mixed model would therefore underestimate variability at higher factor levels and potentially inflate Type I error rates."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "373555ef",
+   "metadata": {
+    "papermill": {
+     "duration": 0.01109,
+     "end_time": "2026-06-25T21:16:55.824669",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:55.813579",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 13.2 Final Variance Structure\n",
+    "\n",
+    "To account for non-constant variance, a heteroscedastic mixed-effects model is specified using a variance function that allows different residual variances across feed rate levels:\n",
+    "\n",
+    "$$\n",
+    "\\mathrm{Var}(\\varepsilon_{ijkl}) = \\sigma^2 \\cdot f^{2\\delta}\n",
+    "$$\n",
+    "\n",
+    "This structure allows the error variance to differ depending on the level of feed rate, capturing the dominant source of heteroscedasticity identified in the data."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "9c54b3f6",
+   "metadata": {
+    "papermill": {
+     "duration": 0.014239,
+     "end_time": "2026-06-25T21:16:55.849956",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:55.835717",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 13.3 Final Model Specification\n",
+    "\n",
+    "The final model is a linear mixed-effects model used to explain surface roughness (Ra) while accounting for both mean structure and changing variability.\n",
+    "\n",
+    "- Fixed effects: ap, vc, f and selected interactions  \n",
+    "- Random effects: Run (to capture run-to-run variability)  \n",
+    "- Heteroskedastic variance structure: variance increases with feed rate  \n",
+    "\n",
+    "$$\n",
+    "y_{ijkl} = \\mu + A_i + B_j + C_k + (AB)_{ij} + (AC)_{ik} + (BC)_{jk} + b_l + \\varepsilon_{ijkl}\n",
+    "$$\n",
+    "\n",
+    "where:\n",
+    "\n",
+    "$$\n",
+    "b_l \\sim N(0, \\sigma^2_{Run})\n",
+    "$$\n",
+    "\n",
+    "and the residual variance is modeled as a function of feed rate rather than as separate variance estimates for each level:\n",
+    "\n",
+    "$$\n",
+    "\\mathrm{Var}(\\varepsilon_{ijkl}) = \\sigma^2 \\cdot f^{2\\delta}\n",
+    "$$"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "d650be7d",
+   "metadata": {
+    "papermill": {
+     "duration": 0.011091,
+     "end_time": "2026-06-25T21:16:55.872824",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:55.861733",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 13.4 R Implementation"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "id": "d2b1aa76",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-25T21:16:55.899457Z",
+     "iopub.status.busy": "2026-06-25T21:16:55.897600Z",
+     "iopub.status.idle": "2026-06-25T21:16:56.084997Z",
+     "shell.execute_reply": "2026-06-25T21:16:56.079882Z"
+    },
+    "papermill": {
+     "duration": 0.206593,
+     "end_time": "2026-06-25T21:16:56.090631",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:55.884038",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"dataframe\">\n",
+       "<caption>A anova.lme: 8 × 4</caption>\n",
+       "<thead>\n",
+       "\t<tr><th></th><th scope=col>numDF</th><th scope=col>denDF</th><th scope=col>F-value</th><th scope=col>p-value</th></tr>\n",
+       "\t<tr><th></th><th scope=col>&lt;int&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th></tr>\n",
+       "</thead>\n",
+       "<tbody>\n",
+       "\t<tr><th scope=row>(Intercept)</th><td>1</td><td>270</td><td>780.6160607</td><td>0.000000e+00</td></tr>\n",
+       "\t<tr><th scope=row>ap</th><td>2</td><td> 27</td><td>  6.6672620</td><td>4.433760e-03</td></tr>\n",
+       "\t<tr><th scope=row>vc</th><td>2</td><td> 27</td><td>  1.8498516</td><td>1.766442e-01</td></tr>\n",
+       "\t<tr><th scope=row>f</th><td>2</td><td> 27</td><td> 47.8733063</td><td>1.323678e-09</td></tr>\n",
+       "\t<tr><th scope=row>ap:vc</th><td>4</td><td> 27</td><td>  2.0925341</td><td>1.095255e-01</td></tr>\n",
+       "\t<tr><th scope=row>ap:f</th><td>4</td><td> 27</td><td>  1.2909527</td><td>2.982983e-01</td></tr>\n",
+       "\t<tr><th scope=row>vc:f</th><td>4</td><td> 27</td><td>  0.3756488</td><td>8.239421e-01</td></tr>\n",
+       "\t<tr><th scope=row>ap:vc:f</th><td>8</td><td> 27</td><td>  0.6447941</td><td>7.335184e-01</td></tr>\n",
+       "</tbody>\n",
+       "</table>\n"
+      ],
+      "text/latex": [
+       "A anova.lme: 8 × 4\n",
+       "\\begin{tabular}{r|llll}\n",
+       "  & numDF & denDF & F-value & p-value\\\\\n",
+       "  & <int> & <dbl> & <dbl> & <dbl>\\\\\n",
+       "\\hline\n",
+       "\t(Intercept) & 1 & 270 & 780.6160607 & 0.000000e+00\\\\\n",
+       "\tap & 2 &  27 &   6.6672620 & 4.433760e-03\\\\\n",
+       "\tvc & 2 &  27 &   1.8498516 & 1.766442e-01\\\\\n",
+       "\tf & 2 &  27 &  47.8733063 & 1.323678e-09\\\\\n",
+       "\tap:vc & 4 &  27 &   2.0925341 & 1.095255e-01\\\\\n",
+       "\tap:f & 4 &  27 &   1.2909527 & 2.982983e-01\\\\\n",
+       "\tvc:f & 4 &  27 &   0.3756488 & 8.239421e-01\\\\\n",
+       "\tap:vc:f & 8 &  27 &   0.6447941 & 7.335184e-01\\\\\n",
+       "\\end{tabular}\n"
+      ],
+      "text/markdown": [
+       "\n",
+       "A anova.lme: 8 × 4\n",
+       "\n",
+       "| <!--/--> | numDF &lt;int&gt; | denDF &lt;dbl&gt; | F-value &lt;dbl&gt; | p-value &lt;dbl&gt; |\n",
+       "|---|---|---|---|---|\n",
+       "| (Intercept) | 1 | 270 | 780.6160607 | 0.000000e+00 |\n",
+       "| ap | 2 |  27 |   6.6672620 | 4.433760e-03 |\n",
+       "| vc | 2 |  27 |   1.8498516 | 1.766442e-01 |\n",
+       "| f | 2 |  27 |  47.8733063 | 1.323678e-09 |\n",
+       "| ap:vc | 4 |  27 |   2.0925341 | 1.095255e-01 |\n",
+       "| ap:f | 4 |  27 |   1.2909527 | 2.982983e-01 |\n",
+       "| vc:f | 4 |  27 |   0.3756488 | 8.239421e-01 |\n",
+       "| ap:vc:f | 8 |  27 |   0.6447941 | 7.335184e-01 |\n",
+       "\n"
+      ],
+      "text/plain": [
+       "            numDF denDF F-value     p-value     \n",
+       "(Intercept) 1     270   780.6160607 0.000000e+00\n",
+       "ap          2      27     6.6672620 4.433760e-03\n",
+       "vc          2      27     1.8498516 1.766442e-01\n",
+       "f           2      27    47.8733063 1.323678e-09\n",
+       "ap:vc       4      27     2.0925341 1.095255e-01\n",
+       "ap:f        4      27     1.2909527 2.982983e-01\n",
+       "vc:f        4      27     0.3756488 8.239421e-01\n",
+       "ap:vc:f     8      27     0.6447941 7.335184e-01"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "library(nlme)\n",
+    "\n",
+    "data$f_num <- as.numeric(as.character(data$f)) # create numeric feed rate\n",
+    "\n",
+    "final_model <- lme(\n",
+    "  Ra ~ ap * vc * f,              # mean structure (fixed effects)\n",
+    "  random = ~1 | Run,             # random run-to-run variation\n",
+    "  weights = varPower(form = ~ f_num), # variance increases with feed rate\n",
+    "  data = data,\n",
+    "  method = \"REML\"\n",
+    ")\n",
+    "\n",
+    "anova(final_model)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "8490dbc7",
+   "metadata": {
+    "papermill": {
+     "duration": 0.033035,
+     "end_time": "2026-06-25T21:16:56.155263",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:56.122228",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "The code above presents the R implementation of the final mixed-effects model used in this analysis."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "id": "75900ee6",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-25T21:16:56.185283Z",
+     "iopub.status.busy": "2026-06-25T21:16:56.183490Z",
+     "iopub.status.idle": "2026-06-25T21:16:56.675480Z",
+     "shell.execute_reply": "2026-06-25T21:16:56.673496Z"
+    },
+    "papermill": {
+     "duration": 0.508397,
+     "end_time": "2026-06-25T21:16:56.678091",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:56.169694",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Welcome to emmeans.\n",
+      "Caution: You lose important information if you filter this package's results.\n",
+      "See '? untidy'\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "NOTE: Results may be misleading due to involvement in interactions\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "NOTE: Results may be misleading due to involvement in interactions\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "NOTE: Results may be misleading due to involvement in interactions\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "NOTE: Results may be misleading due to involvement in interactions\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "NOTE: Results may be misleading due to involvement in interactions\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "NOTE: Results may be misleading due to involvement in interactions\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "library(emmeans)\n",
+    "\n",
+    "ap_emm <- emmeans(final_model, ~ ap)\n",
+    "vc_emm <- emmeans(final_model, ~ vc)\n",
+    "f_emm  <- emmeans(final_model, ~ f)\n",
+    "\n",
+    "ap_df <- as.data.frame(emmeans(final_model, ~ ap))\n",
+    "vc_df <- as.data.frame(emmeans(final_model, ~ vc))\n",
+    "f_df  <- as.data.frame(emmeans(final_model, ~ f))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "id": "fd798e47",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-25T21:16:56.705980Z",
+     "iopub.status.busy": "2026-06-25T21:16:56.704293Z",
+     "iopub.status.idle": "2026-06-25T21:16:56.757678Z",
+     "shell.execute_reply": "2026-06-25T21:16:56.755711Z"
+    },
+    "papermill": {
+     "duration": 0.070523,
+     "end_time": "2026-06-25T21:16:56.760514",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:56.689991",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"dataframe\">\n",
+       "<caption>A summary_emm: 3 × 6</caption>\n",
+       "<thead>\n",
+       "\t<tr><th></th><th scope=col>ap</th><th scope=col>emmean</th><th scope=col>SE</th><th scope=col>df</th><th scope=col>lower.CL</th><th scope=col>upper.CL</th></tr>\n",
+       "\t<tr><th></th><th scope=col>&lt;fct&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th></tr>\n",
+       "</thead>\n",
+       "<tbody>\n",
+       "\t<tr><th scope=row>1</th><td>0.25</td><td>0.8108889</td><td>0.04412397</td><td>27</td><td>0.7203540</td><td>0.9014238</td></tr>\n",
+       "\t<tr><th scope=row>2</th><td>0.5 </td><td>0.5880370</td><td>0.04412397</td><td>27</td><td>0.4975021</td><td>0.6785719</td></tr>\n",
+       "\t<tr><th scope=row>3</th><td>0.8 </td><td>0.7478426</td><td>0.04412397</td><td>27</td><td>0.6573077</td><td>0.8383775</td></tr>\n",
+       "</tbody>\n",
+       "</table>\n"
+      ],
+      "text/latex": [
+       "A summary\\_emm: 3 × 6\n",
+       "\\begin{tabular}{r|llllll}\n",
+       "  & ap & emmean & SE & df & lower.CL & upper.CL\\\\\n",
+       "  & <fct> & <dbl> & <dbl> & <dbl> & <dbl> & <dbl>\\\\\n",
+       "\\hline\n",
+       "\t1 & 0.25 & 0.8108889 & 0.04412397 & 27 & 0.7203540 & 0.9014238\\\\\n",
+       "\t2 & 0.5  & 0.5880370 & 0.04412397 & 27 & 0.4975021 & 0.6785719\\\\\n",
+       "\t3 & 0.8  & 0.7478426 & 0.04412397 & 27 & 0.6573077 & 0.8383775\\\\\n",
+       "\\end{tabular}\n"
+      ],
+      "text/markdown": [
+       "\n",
+       "A summary_emm: 3 × 6\n",
+       "\n",
+       "| <!--/--> | ap &lt;fct&gt; | emmean &lt;dbl&gt; | SE &lt;dbl&gt; | df &lt;dbl&gt; | lower.CL &lt;dbl&gt; | upper.CL &lt;dbl&gt; |\n",
+       "|---|---|---|---|---|---|---|\n",
+       "| 1 | 0.25 | 0.8108889 | 0.04412397 | 27 | 0.7203540 | 0.9014238 |\n",
+       "| 2 | 0.5  | 0.5880370 | 0.04412397 | 27 | 0.4975021 | 0.6785719 |\n",
+       "| 3 | 0.8  | 0.7478426 | 0.04412397 | 27 | 0.6573077 | 0.8383775 |\n",
+       "\n"
+      ],
+      "text/plain": [
+       "  ap   emmean    SE         df lower.CL  upper.CL \n",
+       "1 0.25 0.8108889 0.04412397 27 0.7203540 0.9014238\n",
+       "2 0.5  0.5880370 0.04412397 27 0.4975021 0.6785719\n",
+       "3 0.8  0.7478426 0.04412397 27 0.6573077 0.8383775"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"dataframe\">\n",
+       "<caption>A summary_emm: 3 × 6</caption>\n",
+       "<thead>\n",
+       "\t<tr><th></th><th scope=col>vc</th><th scope=col>emmean</th><th scope=col>SE</th><th scope=col>df</th><th scope=col>lower.CL</th><th scope=col>upper.CL</th></tr>\n",
+       "\t<tr><th></th><th scope=col>&lt;fct&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th></tr>\n",
+       "</thead>\n",
+       "<tbody>\n",
+       "\t<tr><th scope=row>1</th><td>310</td><td>0.7306389</td><td>0.04412397</td><td>27</td><td>0.6401040</td><td>0.8211738</td></tr>\n",
+       "\t<tr><th scope=row>2</th><td>350</td><td>0.7671852</td><td>0.04412397</td><td>27</td><td>0.6766503</td><td>0.8577201</td></tr>\n",
+       "\t<tr><th scope=row>3</th><td>390</td><td>0.6489444</td><td>0.04412397</td><td>27</td><td>0.5584095</td><td>0.7394794</td></tr>\n",
+       "</tbody>\n",
+       "</table>\n"
+      ],
+      "text/latex": [
+       "A summary\\_emm: 3 × 6\n",
+       "\\begin{tabular}{r|llllll}\n",
+       "  & vc & emmean & SE & df & lower.CL & upper.CL\\\\\n",
+       "  & <fct> & <dbl> & <dbl> & <dbl> & <dbl> & <dbl>\\\\\n",
+       "\\hline\n",
+       "\t1 & 310 & 0.7306389 & 0.04412397 & 27 & 0.6401040 & 0.8211738\\\\\n",
+       "\t2 & 350 & 0.7671852 & 0.04412397 & 27 & 0.6766503 & 0.8577201\\\\\n",
+       "\t3 & 390 & 0.6489444 & 0.04412397 & 27 & 0.5584095 & 0.7394794\\\\\n",
+       "\\end{tabular}\n"
+      ],
+      "text/markdown": [
+       "\n",
+       "A summary_emm: 3 × 6\n",
+       "\n",
+       "| <!--/--> | vc &lt;fct&gt; | emmean &lt;dbl&gt; | SE &lt;dbl&gt; | df &lt;dbl&gt; | lower.CL &lt;dbl&gt; | upper.CL &lt;dbl&gt; |\n",
+       "|---|---|---|---|---|---|---|\n",
+       "| 1 | 310 | 0.7306389 | 0.04412397 | 27 | 0.6401040 | 0.8211738 |\n",
+       "| 2 | 350 | 0.7671852 | 0.04412397 | 27 | 0.6766503 | 0.8577201 |\n",
+       "| 3 | 390 | 0.6489444 | 0.04412397 | 27 | 0.5584095 | 0.7394794 |\n",
+       "\n"
+      ],
+      "text/plain": [
+       "  vc  emmean    SE         df lower.CL  upper.CL \n",
+       "1 310 0.7306389 0.04412397 27 0.6401040 0.8211738\n",
+       "2 350 0.7671852 0.04412397 27 0.6766503 0.8577201\n",
+       "3 390 0.6489444 0.04412397 27 0.5584095 0.7394794"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"dataframe\">\n",
+       "<caption>A summary_emm: 3 × 6</caption>\n",
+       "<thead>\n",
+       "\t<tr><th></th><th scope=col>f</th><th scope=col>emmean</th><th scope=col>SE</th><th scope=col>df</th><th scope=col>lower.CL</th><th scope=col>upper.CL</th></tr>\n",
+       "\t<tr><th></th><th scope=col>&lt;fct&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;dbl&gt;</th></tr>\n",
+       "</thead>\n",
+       "<tbody>\n",
+       "\t<tr><th scope=row>1</th><td>0.07</td><td>0.4105093</td><td>0.04374951</td><td>27</td><td>0.3207427</td><td>0.5002758</td></tr>\n",
+       "\t<tr><th scope=row>2</th><td>0.1 </td><td>0.7144352</td><td>0.04401660</td><td>27</td><td>0.6241206</td><td>0.8047498</td></tr>\n",
+       "\t<tr><th scope=row>3</th><td>0.13</td><td>1.0218241</td><td>0.04460149</td><td>27</td><td>0.9303094</td><td>1.1133388</td></tr>\n",
+       "</tbody>\n",
+       "</table>\n"
+      ],
+      "text/latex": [
+       "A summary\\_emm: 3 × 6\n",
+       "\\begin{tabular}{r|llllll}\n",
+       "  & f & emmean & SE & df & lower.CL & upper.CL\\\\\n",
+       "  & <fct> & <dbl> & <dbl> & <dbl> & <dbl> & <dbl>\\\\\n",
+       "\\hline\n",
+       "\t1 & 0.07 & 0.4105093 & 0.04374951 & 27 & 0.3207427 & 0.5002758\\\\\n",
+       "\t2 & 0.1  & 0.7144352 & 0.04401660 & 27 & 0.6241206 & 0.8047498\\\\\n",
+       "\t3 & 0.13 & 1.0218241 & 0.04460149 & 27 & 0.9303094 & 1.1133388\\\\\n",
+       "\\end{tabular}\n"
+      ],
+      "text/markdown": [
+       "\n",
+       "A summary_emm: 3 × 6\n",
+       "\n",
+       "| <!--/--> | f &lt;fct&gt; | emmean &lt;dbl&gt; | SE &lt;dbl&gt; | df &lt;dbl&gt; | lower.CL &lt;dbl&gt; | upper.CL &lt;dbl&gt; |\n",
+       "|---|---|---|---|---|---|---|\n",
+       "| 1 | 0.07 | 0.4105093 | 0.04374951 | 27 | 0.3207427 | 0.5002758 |\n",
+       "| 2 | 0.1  | 0.7144352 | 0.04401660 | 27 | 0.6241206 | 0.8047498 |\n",
+       "| 3 | 0.13 | 1.0218241 | 0.04460149 | 27 | 0.9303094 | 1.1133388 |\n",
+       "\n"
+      ],
+      "text/plain": [
+       "  f    emmean    SE         df lower.CL  upper.CL \n",
+       "1 0.07 0.4105093 0.04374951 27 0.3207427 0.5002758\n",
+       "2 0.1  0.7144352 0.04401660 27 0.6241206 0.8047498\n",
+       "3 0.13 1.0218241 0.04460149 27 0.9303094 1.1133388"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "ap_df\n",
+    "vc_df\n",
+    "f_df"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "c0fb3a17",
+   "metadata": {
+    "papermill": {
+     "duration": 0.012624,
+     "end_time": "2026-06-25T21:16:56.785908",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:56.773284",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "We also compute the estimated marginal means of surface roughness (Ra) for each level of the machining parameters. These values represent the model-adjusted average Ra while accounting for the effects of other variables, interactions, and run-to-run variability. This allows direct comparison of how ap, vc, and f individually influence the mean surface finish."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "3c0a40e8",
+   "metadata": {
+    "papermill": {
+     "duration": 0.012615,
+     "end_time": "2026-06-25T21:16:56.811051",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:56.798436",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 13.6 Interpretation of Final Model\n",
+    "\n",
+    "Feed rate is the most statistically significant factor influencing mean surface roughness:\n",
+    "\n",
+    "$F_f = 47.873,\\quad p = 1.32 \\times 10^{-9}$\n",
+    "\n",
+    "followed by depth of cut:\n",
+    "\n",
+    "$F_{ap} = 6.667,\\quad p = 4.43 \\times 10^{-3}$\n",
+    "\n",
+    "while cutting speed is not statistically significant:\n",
+    "\n",
+    "$F_{vc} = 1.850,\\quad p = 0.177$\n",
+    "\n",
+    "Interaction effects between machining parameters are not statistically significant at the 95% confidence level:\n",
+    "- $ap \\times vc:\\; p = 0.110$\n",
+    "- $ap \\times f:\\; p = 0.298$\n",
+    "- $vc \\times f:\\; p = 0.824$\n",
+    "- $ap \\times vc \\times f:\\; p = 0.734$\n",
+    "\n",
+    "Estimated marginal means further confirm the effect of feed rate on mean surface roughness:\n",
+    "\n",
+    "$Ra_{0.07} = 0.411,\\quad Ra_{0.10} = 0.714,\\quad Ra_{0.13} = 1.022$\n",
+    "\n",
+    "Depth of cut shows a non-linear effect:\n",
+    "\n",
+    "$Ra_{0.25} = 0.811,\\quad Ra_{0.5} = 0.588,\\quad Ra_{0.8} = 0.748$\n",
+    "\n",
+    "Cutting speed has a weaker and non-monotonic influence:\n",
+    "\n",
+    "$Ra_{310} = 0.731,\\quad Ra_{350} = 0.767,\\quad Ra_{390} = 0.649$\n",
+    "\n",
+    "Overall, feed rate is the dominant factor controlling mean surface roughness, depth of cut has a secondary effect, and cutting speed along with interaction terms contribute minimally to the mean response."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "6d74ce91",
+   "metadata": {
+    "papermill": {
+     "duration": 0.012983,
+     "end_time": "2026-06-25T21:16:56.836611",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:56.823628",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "## 14. Final Summary and Concluding Remarks\n",
+    "\n",
+    "This study analyzed the relationship between machining parameters—depth of cut (ap), cutting speed (vc), and feed rate (f)—and surface roughness (Ra) using a mixed-effects factorial modeling framework with an explicit treatment of heteroscedasticity."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "8c577d17",
+   "metadata": {
+    "papermill": {
+     "duration": 0.013153,
+     "end_time": "2026-06-25T21:16:56.862106",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:56.848953",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 14.1 Summary of Main Findings\n",
+    "\n",
+    "The results consistently show a clear structure in how machining parameters affect surface roughness:\n",
+    "\n",
+    "- **Feed rate (f)** is the dominant factor, significantly influencing both the mean and variability of surface roughness (p < 0.001).\n",
+    "- **Depth of cut (ap)** has a statistically significant but weaker effect on the mean response.\n",
+    "- **Cutting speed (vc)** does not have a statistically significant effect within the studied range.\n",
+    "\n",
+    "No significant interaction effects were detected, suggesting that the factors operate largely independently in their influence on surface roughness."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "023f5aeb",
+   "metadata": {
+    "papermill": {
+     "duration": 0.012342,
+     "end_time": "2026-06-25T21:16:56.887462",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:56.875120",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 14.2 Variance Structure and Model Adequacy\n",
+    "\n",
+    "Diagnostic analysis revealed that the assumption of constant variance was violated, with variability increasing across machining conditions—particularly with higher feed rates.\n",
+    "\n",
+    "This was addressed using a heteroscedastic mixed-effects model, allowing residual variance to vary by feed rate. This adjustment:\n",
+    "\n",
+    "- Improved model fit (lower AIC)\n",
+    "- Produced more reliable standard errors\n",
+    "- Reduced bias in statistical inference"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "acdc7ec9",
+   "metadata": {
+    "papermill": {
+     "duration": 0.012165,
+     "end_time": "2026-06-25T21:16:56.912316",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:56.900151",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 14.3 Key Statistical Insight\n",
+    "\n",
+    "Accounting for non-constant variance did not change the overall conclusions about factor importance, but it strengthened the reliability of the inference.\n",
+    "\n",
+    "Feed rate remains the primary driver of both the level and variability of surface roughness, while other factors play secondary or negligible roles."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "2729feda",
+   "metadata": {
+    "papermill": {
+     "duration": 0.012498,
+     "end_time": "2026-06-25T21:16:56.937162",
+     "exception": false,
+     "start_time": "2026-06-25T21:16:56.924664",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "### 14.4 Final Conclusion \n",
+    "\n",
+    "The machining process is best described by a model in which feed rate governs both the expected value and variability of surface roughness. Depth of cut contributes moderately to the mean response, while cutting speed has minimal influence.\n",
+    "\n",
+    "The final mixed-effects model with a structured variance component provides a robust and interpretable representation of the system, capturing both mean behavior and heteroscedasticity in a statistically coherent framework.\n",
+    "\n",
+    "Overall, this analysis demonstrates the importance of accounting for variance heterogeneity in factorial experiments. Ignoring such structure would lead to less reliable inference, particularly in systems where process parameters directly influence variability, as observed here with feed rate."
+   ]
+  }
+ ],
+ "metadata": {
+  "kaggle": {
+   "accelerator": "none",
+   "dataSources": [
+    {
+     "databundleVersionId": 3738771,
+     "datasetId": 2205074,
+     "sourceId": 3684605,
+     "sourceType": "datasetVersion"
+    }
+   ],
+   "dockerImageVersionId": 31330,
+   "isGpuEnabled": false,
+   "isInternetEnabled": false,
+   "language": "r",
+   "sourceType": "notebook"
+  },
+  "kernelspec": {
+   "display_name": "R",
+   "language": "R",
+   "name": "ir"
+  },
+  "language_info": {
+   "codemirror_mode": "r",
+   "file_extension": ".r",
+   "mimetype": "text/x-r-source",
+   "name": "R",
+   "pygments_lexer": "r",
+   "version": "4.4.0"
+  },
+  "papermill": {
+   "default_parameters": {},
+   "duration": 12.912055,
+   "end_time": "2026-06-25T21:16:57.072040",
+   "environment_variables": {},
+   "exception": null,
+   "input_path": "__notebook__.ipynb",
+   "output_path": "__notebook__.ipynb",
+   "parameters": {},
+   "start_time": "2026-06-25T21:16:44.159985",
+   "version": "2.6.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
