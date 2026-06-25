@@ -41,14 +41,18 @@ The analysis demonstrates a reproducible statistical workflow, including model f
 
 ## R Packages
 
-- `nlme`
-- `ggplot2`
-- `patchwork`
 - `car`
-- `performance`
-- `modelsummary`
-- `knitr`
+- `dplyr`
+- `effectsize`
+- `emmeans`
+- `ggplot2`
+- `IRdisplay`
 - `kableExtra`
+- `knitr`
+- `lme4`
+- `modelsummary`
+- `nlme`
+- `patchwork`
 
 ---
 
@@ -81,12 +85,13 @@ mixed-effects-cnc-analysis/
 
 ---
 
-## Key Findings
+## Project Highlights
 
-- Mixed-effects modeling accounted for repeated measurements within machining runs.
-- Feed rate had the strongest influence on surface roughness among the machining parameters.
-- Diagnostic analyses supported evaluation of model assumptions, including residual normality and homoscedasticity.
-- The workflow demonstrates reproducible statistical analysis using real manufacturing data.
+- Built a mixed-effects model to examine how depth of cut, cutting speed, and feed rate influence CNC surface roughness.
+- Found that feed rate had the greatest impact on surface roughness and remained the only consistently significant machining parameter.
+- Observed a smaller but statistically significant effect from depth of cut, while cutting speed and interaction effects were not significant within the range of the experiment.
+- Diagnostic checks revealed non-constant variance, so the model was refined with a heteroscedastic variance structure based on feed rate.
+- The final model provided a more reliable representation of the machining process and demonstrated a complete, reproducible statistical analysis workflow in R.
 
 ---
 
