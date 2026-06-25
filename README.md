@@ -61,10 +61,8 @@ mixed-effects-cnc-analysis/
 ├── figures/
 │   ├── boxplots_by_factor.png
 │   ├── qq_plot.png
-│   ├── residuals_vs_fitted.png
-│   └── histogram_residuals.png
 ├── report/
-│   └── Final_Report.pdf
+│   └── final_report.pdf
 ├── README.md
 └── LICENSE
 ```
@@ -80,10 +78,6 @@ mixed-effects-cnc-analysis/
 ### Normal Q-Q Plot
 
 ![Q-Q Plot](figures/qq_plot.png)
-
-### Residuals vs. Fitted Values
-
-![Residual Plot](figures/residuals_vs_fitted.png)
 
 ---
 
