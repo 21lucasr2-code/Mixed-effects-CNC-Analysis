@@ -113,6 +113,6 @@ mixed-effects-cnc-analysis/
 
 **Lucas Russo**
 
-Bachelor of Science in Mathematics
+Bachelor of Arts in Mathematics
 
 This project was completed as part of my statistics portfolio to demonstrate practical applications of statistical modeling and data analysis in manufacturing.
